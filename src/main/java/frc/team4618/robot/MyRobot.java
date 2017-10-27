@@ -1,6 +1,8 @@
 package frc.team4618.robot;
 
-import edu.wpi.first.wpilibj.IterativeRobot;
+import edu.wpi.first.wpilibj.SampleRobot;
+import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.Victor;
 
 public class MyRobot extends SampleRobot {
 
@@ -11,7 +13,7 @@ public class MyRobot extends SampleRobot {
     }
 
     public void autonomous() {
-        while (isAutonomous() && isEnable()) {
+        while (isAutonomous() && isEnabled()) {
             Timer.delay(0.05);
         }
     }
