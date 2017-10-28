@@ -1,10 +1,10 @@
-package frc.team4618.robot;
+package team4618;
 
 import edu.wpi.first.wpilibj.SampleRobot;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.Victor;
 
-public class MyRobot extends SampleRobot {
+public class Robot extends SampleRobot {
 
     Victor motorController;
 
