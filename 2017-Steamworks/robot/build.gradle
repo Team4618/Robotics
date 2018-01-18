@@ -1,5 +1,8 @@
 apply plugin: "jaci.openrio.gradle.GradleRIO"
 
+sourceSets.main.java.srcDirs = [
+        'src/main/java']
+
 deploy {
     targets {
         target("roborio", jaci.openrio.gradle.frc.RoboRIO) {
@@ -12,6 +15,7 @@ deploy {
         // and run our code.
         artifact('robotCode', jaci.openrio.gradle.frc.FRCJavaArtifact) {
             targets << "roborio"
+            debug = true
         }
     }
 }
@@ -26,5 +30,5 @@ dependencies {
 
 jar {
     from configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
-    manifest jaci.openrio.gradle.GradleRIOPlugin.javaManifest('team4618.Robot')
+    manifest jaci.openrio.gradle.GradleRIOPlugin.javaManifest('team4618.robot.Robot')
 }

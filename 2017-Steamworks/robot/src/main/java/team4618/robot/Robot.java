@@ -1,31 +1,41 @@
 package team4618.robot;
 
-import edu.wpi.first.wpilibj.*;
+import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.wpilibj.DoubleSolenoid;
+import edu.wpi.first.wpilibj.Joystick;
+import edu.wpi.first.wpilibj.SampleRobot;
+import edu.wpi.first.wpilibj.Timer;
 
+//TODO: Maybe change to timed robot, investigate command based
 public class Robot extends SampleRobot {
-
-    public RobotDrive drivetrain;
-    public Joystick driver;
-    public DoubleSolenoid shifter;
+    public Joystick driver = new Joystick(0);
+    public DriveSubsystem driveSubsystem = new DriveSubsystem();
+    public static NetworkTableInstance network;
 
     public void robotInit() {
-        drivetrain = new RobotDrive(1, 2, 0, 3);
-
-        driver = new Joystick(0);
-        shifter = new DoubleSolenoid(0, 1);
+        network = NetworkTableInstance.getDefault();
+        //Subsystems.init();
+        driveSubsystem.initSystem();
     }
 
     public void operatorControl() {
-        while (isOperatorControl() && isEnabled()) {
-            drivetrain.arcadeDrive(-driver.getRawAxis(1), driver.getRawAxis(4));
+        //Subsystems.enable();
+        driveSubsystem.enable();
 
-            if(driver.getRawButton(5)) {
-                shifter.set(DoubleSolenoid.Value.kForward);
-            } else {
-                shifter.set(DoubleSolenoid.Value.kReverse);
-            }
+        while (isOperatorControl() && isEnabled()) {
+            driveSubsystem.shifter.set(driver.getRawButton(5) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+
+            //I don't like multiplying by a negative to flip the direction
+            double left_speed = -10 * driver.getRawAxis(1);
+            double right_speed = -10 * driver.getRawAxis(5);
+            driveSubsystem.left.controller.setSetpoint(left_speed);
+            driveSubsystem.right.controller.setSetpoint(right_speed);
+
+            driveSubsystem.postState();
 
             Timer.delay(0.05);
         }
+
+        driveSubsystem.disable();
     }
 }
