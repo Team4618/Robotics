@@ -18,8 +18,6 @@ public abstract class Subsystem implements TableEntryListener {
     @Retention(RetentionPolicy.RUNTIME) public @interface Unit { Units value(); }
 
     public abstract void init();
-    public abstract void enable();
-    public abstract void disable();
     public void updateParameters() { }
     public abstract void postState();
     public abstract String name();
@@ -80,7 +78,7 @@ public abstract class Subsystem implements TableEntryListener {
             HashMap<String, Double> paramFile = FileIO.MapFromFile(this);
             for (Enum p : parameters) {
 
-                Double param = paramFile.containsKey(p.toString()) ? paramFile.get(p.toString()) : 0.0;
+                Double param = paramFile.getOrDefault(p.toString(), 0.0);
                 parameterTable.getEntry(p.toString()).setValue(param);
             }
         }

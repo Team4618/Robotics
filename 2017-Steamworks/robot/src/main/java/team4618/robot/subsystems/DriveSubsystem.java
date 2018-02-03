@@ -1,12 +1,15 @@
-package team4618.robot;
+package team4618.robot.subsystems;
 
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.kauailabs.navx.frc.AHRS;
 import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
+import org.opencv.core.Mat;
+import team4618.robot.Robot;
+import team4618.robot.Subsystem;
 
-import static team4618.robot.DriveSubsystem.Parameters.*;
+import static team4618.robot.subsystems.DriveSubsystem.Parameters.*;
 import static team4618.robot.Subsystem.Units.*;
 
 public class DriveSubsystem extends Subsystem {
@@ -58,41 +61,53 @@ public class DriveSubsystem extends Subsystem {
 
     @Subsystem.ParameterEnum
     public enum Parameters { LeftP, LeftI, LeftD, RightP, RightI, RightD,
-                             TurnSlop, TurnSpeed, DistanceSlop }
+                             TurnSlop, TurnRateSlop, TurnSpeed, TurnOvershootSpeed,
+                             DistanceSlop, DistanceRateSlop, OvershootSpeed}
 
     public void updateParameters() {
         left.controller.setPID(value(LeftP), value(LeftI), value(LeftD));
         right.controller.setPID(value(RightP), value(RightI), value(RightD));
     }
 
-    public void enable() {
-        left.controller.enable();
-        right.controller.enable();
-    }
-
-    public void disable() {
-        left.controller.disable();
-        right.controller.disable();
-    }
-
     public double Lerp(double a, double t, double b) {
         return (1 - t) * a + t * b;
     }
 
+    public void initPID() {
+        left.controller.reset();
+        right.controller.reset();
+
+        left.controller.enable();
+        right.controller.enable();
+
+        left.encoder.reset();
+        right.encoder.reset();
+    }
+
+    public void stopPID() {
+        left.controller.reset();
+        right.controller.reset();
+
+        left.master.set(0);
+        right.master.set(0);
+    }
+
+    public double sign(double x) { return x / Math.abs(x); }
+
     @Command
     public boolean driveDistance(Robot.CommandState commandState, @Unit(Feet) double distance, @Unit(FeetPerSecond) double maxSpeed, @Unit(Seconds) double timeUntilMaxSpeed) {
-        if(commandState.init) {
-            left.controller.reset();
-            right.controller.reset();
+        if(commandState.init)
+            initPID();
 
-            left.controller.enable();
-            right.controller.enable();
-
-            left.encoder.reset();
-            right.encoder.reset();
+        double curr_distance = (left.encoder.getDistance() + right.encoder.getDistance()) / 2.0;
+        boolean overshot;
+        if(distance > 0) {
+            overshot = curr_distance > distance;
+        } else {
+            overshot = curr_distance < distance;
         }
 
-        double speed = Lerp(0, Math.min(commandState.elapsedTime / timeUntilMaxSpeed, 1), maxSpeed);
+        double speed = sign(distance) * (overshot ? -value(OvershootSpeed) : Lerp(0, Math.min(commandState.elapsedTime / timeUntilMaxSpeed, 1), maxSpeed));
         left.controller.setSetpoint(speed);
         right.controller.setSetpoint(speed);
 
@@ -100,16 +115,13 @@ public class DriveSubsystem extends Subsystem {
         commandState.postState("Left Remaining", Feet, left.encoder.getDistance() - distance);
         commandState.postState("Right Remaining", Feet, right.encoder.getDistance() - distance);
 
-        boolean left_done = Math.abs(left.encoder.getDistance() - distance) < value(DistanceSlop);
-        boolean right_done = Math.abs(right.encoder.getDistance() - distance) < value(DistanceSlop);
+        boolean left_done = (Math.abs(left.encoder.getDistance() - distance) < value(DistanceSlop)) &&
+                            (Math.abs(left.encoder.getRate()) < value(DistanceRateSlop));
+        boolean right_done = (Math.abs(right.encoder.getDistance() - distance) < value(DistanceSlop)) &&
+                            (Math.abs(right.encoder.getRate()) < value(DistanceRateSlop));
 
-        if(left_done && right_done) {
-            left.controller.reset();
-            right.controller.reset();
-
-            left.master.set(0);
-            right.master.set(0);
-        }
+        if(left_done && right_done)
+            stopPID();
 
         return left_done && right_done;
     }
@@ -125,39 +137,34 @@ public class DriveSubsystem extends Subsystem {
 
     @Command
     public boolean turnToAngle(Robot.CommandState commandState, @Unit(Degrees) double angle) {
-        if(commandState.init) {
-            left.controller.reset();
-            right.controller.reset();
-
-            left.controller.enable();
-            right.controller.enable();
-        }
+        if(commandState.init)
+            initPID();
 
         double curr_angle = getAngle();
         double remaining_angle = curr_angle - angle;
-        //if (curr_angle > angle
-        //{
-        //   double left_direction = (360 - Math.round(angle) + Math.round(curr_angle)) > (Math.round(angle) - Math.round(curr_angle)) ? 1 : -1;
-        //
-        //}
-        //double left_direction = (360 - Math.round(angle) + Math.round(curr_angle)) > (Math.round(angle) - Math.round(curr_angle)) ? 1 : -1;
-        double left_direction = Math.abs(remaining_angle) > Math.abs(remaining_angle) ? 1 : -1;
+        double left_direction;
+        if (curr_angle > angle) {
+            left_direction = (360 - curr_angle + angle) < (curr_angle - angle) ? 1 : -1;
+        } else {
+            left_direction = (360 - angle + curr_angle) > (angle - curr_angle) ? 1 : -1;
+        }
         left.controller.setSetpoint(left_direction * value(TurnSpeed));
         right.controller.setSetpoint(-left_direction * value(TurnSpeed));
 
-        boolean turn_done = Math.abs(remaining_angle) < value(TurnSlop);
-
+        boolean turn_done = (Math.abs(remaining_angle) < value(TurnSlop)) &&
+                            (Math.abs(navx.getRate()) < value(TurnRateSlop));
         commandState.postState("Remaining", Degrees, remaining_angle);
 
-        if(turn_done) {
-            left.controller.reset();
-            right.controller.reset();
-
-            left.master.set(0);
-            right.master.set(0);
-        }
+        if(turn_done)
+            stopPID();
 
         return turn_done;
+    }
+
+    //TODO: pathfinder
+    @Command
+    public boolean goTo() {
+        return false;
     }
 
     public void postState() {
@@ -166,7 +173,6 @@ public class DriveSubsystem extends Subsystem {
         PostState("Raw Angle", Degrees, navx.getAngle());
         PostState("Angle", Degrees, getAngle());
         PostState("Speed", FeetPerSecond, (left.encoder.getRate() + right.encoder.getRate()) / 2);
-        PostState("Test Angle", FeetPerSecond, canonicalizeAngle(getAngle() - 270));
     }
 
     public String name() { return "Drive"; }

@@ -6,11 +6,11 @@ import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
+import team4618.robot.subsystems.DriveSubsystem;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Set;
 
 public class Robot extends TimedRobot {
     public Joystick driver = new Joystick(0);
@@ -78,7 +78,6 @@ public class Robot extends TimedRobot {
     int currentlyExecuting = 0;
 
     public void autonomousInit() {
-        driveSubsystem.navx.reset();
         commands.clear();
         currentlyExecuting = 0;
 
@@ -93,19 +92,6 @@ public class Robot extends TimedRobot {
                         table.getEntry("Params").getDoubleArray(new double[0])));
             }
         }
-
-        /*
-        commands.add(new AutonomousCommand("Drive", "driveDistance",
-                                           new double[]{ 8, 2, 3 }));
-
-        commands.add(new AutonomousCommand("Drive", "turnToAngle",
-                                           new double[]{ 90 }));
-
-        commands.add(new AutonomousCommand("Drive", "driveDistance",
-                                           new double[]{ 3, 2, 3 }));
-        */
-
-        //Subsystems.enable();
     }
 
     public void autonomousPeriodic() {
@@ -148,8 +134,6 @@ public class Robot extends TimedRobot {
     }
 
     public void teleopInit() {
-        //Subsystems.disable();
-
         driveSubsystem.left.controller.disable();
         driveSubsystem.right.controller.disable();
     }
@@ -169,7 +153,7 @@ public class Robot extends TimedRobot {
     }
 
     public void disabledInit() {
-        //Subsystems.disable();
+
     }
 
     public void disabledPeriodic() {
