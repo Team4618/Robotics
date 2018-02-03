@@ -25,7 +25,6 @@ task unpackNtcoreJNI(type: Copy) {
     mkdir root + "/driverstation/build/tmp"
     mkdir root + "/driverstation/build/libs"
 
-    println project.rootDir
     def f = new File(root + '/driverstation/build/tmp/ntcore.jar')
     if (!f.exists()) {
         println 'Downloading ntcore JNI'

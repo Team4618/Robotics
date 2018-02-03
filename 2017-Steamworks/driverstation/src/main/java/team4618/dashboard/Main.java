@@ -1,163 +1,167 @@
 package team4618.dashboard;
 
+import edu.wpi.first.networktables.ConnectionNotification;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.chart.LineChart;
-import javafx.scene.chart.NumberAxis;
-import javafx.scene.chart.XYChart;
 import javafx.scene.control.Button;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.Tooltip;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.image.Image;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Text;
 import javafx.stage.Stage;
-import javafx.util.Duration;
+import team4618.dashboard.pages.*;
 
-import java.lang.reflect.Field;
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.function.Consumer;
 
-public class Main extends Application {
+public class Main extends Application implements Consumer<ConnectionNotification> {
     public static void main(String[] args) {
         launch(args);
-        network.stopClient(); //TODO: this stays on, why?
     }
 
     public static NetworkTableInstance network;
+    public static NetworkTable mainTable;
+    public static NetworkTable subsystemTable;
+
+    public static class Subsystem {
+        public static class CommandParam { public String name; public String unit; }
+
+        public NetworkTable table;
+        public NetworkTable parameterTable;
+        public NetworkTable stateTable;
+        public NetworkTable commandTable;
+        public HashMap<String, CommandParam[]> commands = new HashMap<>();
+
+        public Subsystem(String name) {
+            table = network.getTable("Custom Dashboard/Subsystem/" + name);
+            parameterTable = network.getTable("Custom Dashboard/Subsystem/" + name + "/Parameters");
+            stateTable = network.getTable("Custom Dashboard/Subsystem/" + name + "/State");
+            commandTable = network.getTable("Custom Dashboard/Subsystem/" + name + "/Commands");
+
+            for(String key : commandTable.getKeys()) {
+                String command = key.replace("_ParamNames", "").replace("_ParamUnits", "");
+                String[] values = commandTable.getEntry(key).getStringArray(new String[0]);
+
+                if(!commands.containsKey(command)) {
+                    commands.put(command, new CommandParam[values.length]);
+                    for(int i = 0; i < commands.get(command).length; i++) {
+                        commands.get(command)[i] = new CommandParam();
+                    }
+                }
+
+                CommandParam[] params = commands.get(command);
+                for(int i = 0; i < params.length; i++) {
+                    if(key.endsWith("_ParamNames")) {
+                        params[i].name = values[i];
+                    } else if(key.endsWith("_ParamUnits")) {
+                        params[i].unit = values[i];
+                    }
+                }
+            }
+        }
+    }
+
+    public static HashMap<String, Subsystem> subsystems = new HashMap<>();
+
+    public Rectangle connectionStatus = new Rectangle();
+    public Text connectionName = new Text("No Connection");;
+
+    public BorderPane root = new BorderPane();
+    public VBox menu = new VBox();
 
     @Override
     public void start(Stage window) {
         network = NetworkTableInstance.getDefault();
         network.setServerTeam(4618);
         network.startClient();
+        network.addConnectionListener(this, true);
+        mainTable = network.getTable("Custom Dashboard");
+        subsystemTable = network.getTable("Custom Dashboard/Subsystem");
 
-        NetworkTable main_table = network.getTable("Custom Dashboard");
-
-        BorderPane root = new BorderPane();
+        Image logo = new Image(ClassLoader.getSystemClassLoader().getResourceAsStream("logo.png"));
+        BackgroundImage[] backgrounds = new BackgroundImage[2];
+        backgrounds[0] = new BackgroundImage(logo /*new Image(ClassLoader.getSystemClassLoader().getResourceAsStream("background.png"))*/, BackgroundRepeat.NO_REPEAT, BackgroundRepeat.NO_REPEAT, BackgroundPosition.CENTER, BackgroundSize.DEFAULT);
+        backgrounds[1] = new BackgroundImage(logo, BackgroundRepeat.NO_REPEAT, BackgroundRepeat.NO_REPEAT, BackgroundPosition.CENTER, BackgroundSize.DEFAULT);
+        root.setBackground(new Background(backgrounds));
         window.setTitle("Dashboard");
         window.setScene(new Scene(root, 1280, 720));
+        window.getIcons().add(logo);
         window.show();
 
-        VBox menu = new VBox();
-        menu.setStyle("-fx-background-color: red");
+        HBox statusBar = new HBox();
+        statusBar.setPrefHeight(20);
+        statusBar.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
+        statusBar.setAlignment(Pos.CENTER_LEFT);
+        statusBar.setPadding(new Insets(2));
+        root.setTop(statusBar);
+
+        connectionStatus.widthProperty().bind(connectionStatus.heightProperty());
+        connectionStatus.heightProperty().bind(statusBar.heightProperty().subtract(4));
+        connectionStatus.setFill(Color.RED);
+        connectionStatus.setArcHeight(7);
+        connectionStatus.setArcWidth(7);
+
+        connectionName.setStroke(Color.WHITE);
+        connectionName.setFill(Color.WHITE);
+        statusBar.getChildren().addAll(connectionStatus, connectionName);
+
+        //TODO: frosted glass effect behind menu pane
+        menu.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.1), new CornerRadii(0), new Insets(0))));
         menu.setPrefWidth(100);
         root.setLeft(menu);
 
-        VBox home_pane = new VBox();
-        home_pane.setStyle("-fx-background-color: blue");
+        HomePage homePage = new HomePage();
+        addMenuButton("Home", homePage);
+        root.setCenter(homePage);
 
-        Button reconnect = new Button("Reconnect");
-        reconnect.setOnAction(event -> {});
-        home_pane.getChildren().add(reconnect);
-        /*
-        Image field_topdown = new Image("./hydrodynamics.png");
-        ImageView field = new ImageView(field_topdown);
-        field.setPreserveRatio(true);
-        field.setSmooth(true);
-        field.setCache(true);
-        home_pane.getChildren().add(field);
-        */
+        AutonomousPage autonomousPage = new AutonomousPage();
+        addMenuButton("Autonomous", autonomousPage);
 
-        ArrayList<SubsystemPage> pages = new ArrayList();
-        for(String subtable : main_table.getSubTables()) {
-            SubsystemPage page = new SubsystemPage(window.getWidth() - menu.getPrefWidth(), root, subtable);
-            pages.add(page);
-            menu.getChildren().add(page.menu_button);
-        }
+        RobotPage robotPage = new RobotPage();
+        addMenuButton("Robot", robotPage);
 
-        VBox drive_content = new VBox();
-        ScrollPane drive_pane = new ScrollPane(drive_content);
-        drive_pane.setPrefWidth(window.getWidth() - menu.getPrefWidth() - 31);
-        drive_pane.setStyle("-fx-background-color: yellow");
+        FieldPage fieldPage = new FieldPage();
+        addMenuButton("Field", fieldPage);
+    }
 
-        HBox parameters = new HBox();
-        parameters.setPrefWidth(drive_pane.getPrefWidth());
-        parameters.setStyle("-fx-background-color: lime green");
-        parameters.setSpacing(10);
-        drive_content.getChildren().add(parameters);
+    public void addMenuButton(String name, Node n) {
+        Button robot = new Button(name);
+        robot.setOnAction(event -> root.setCenter(n));
+        robot.prefWidthProperty().bind(menu.widthProperty());
+        menu.getChildren().add(robot);
+    }
 
-        VBox state_graphs = new VBox();
-        state_graphs.setPrefWidth(drive_pane.getPrefWidth());
-        state_graphs.setStyle("-fx-background-color: cyan");
-        drive_content.getChildren().add(state_graphs);
-
-        Button home = new Button("Home");
-        home.setOnAction(event -> root.setCenter(home_pane));
-        menu.getChildren().add(home);
-
-        Button drive = new Button("Drive");
-        drive.setOnAction(event -> root.setCenter(drive_pane));
-        menu.getChildren().add(drive);
-
-        Tooltip dummytooltip = new Tooltip();
-        try {
-            Field fieldBehavior = Tooltip.class.getDeclaredField("BEHAVIOR");
-            fieldBehavior.setAccessible(true);
-            Object objBehavior = fieldBehavior.get(dummytooltip);
-
-            Field fieldTimer = objBehavior.getClass().getDeclaredField("activationTimer");
-            fieldTimer.setAccessible(true);
-            Timeline objTimer = (Timeline) fieldTimer.get(objBehavior);
-
-            objTimer.getKeyFrames().clear();
-            objTimer.getKeyFrames().add(new KeyFrame(new Duration(0)));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        NumberAxis xAxis = new NumberAxis();
-        NumberAxis yAxis = new NumberAxis();
-        yAxis.setLabel("Feet/Sec");
-        LineChart<Number, Number> chart = new LineChart<Number, Number>(xAxis, yAxis);
-
-        XYChart.Series leftSpeed = new XYChart.Series();
-        leftSpeed.setName("Left Speed");
-        leftSpeed.getData().add(new XYChart.Data(1, 10));
-        leftSpeed.getData().add(new XYChart.Data(2, 6));
-        leftSpeed.getData().add(new XYChart.Data(4, 12));
-
-        XYChart.Series rightSpeed = new XYChart.Series();
-        rightSpeed.setName("Right Speed");
-        rightSpeed.getData().add(new XYChart.Data(1, 11));
-        rightSpeed.getData().add(new XYChart.Data(2, 7));
-        rightSpeed.getData().add(new XYChart.Data(4, 9));
-
-        chart.getData().addAll(leftSpeed, rightSpeed);
-        state_graphs.getChildren().add(chart);
-
-        for (XYChart.Series<Number, Number> s : chart.getData()) {
-            for (XYChart.Data<Number, Number> d : s.getData()) {
-                Tooltip.install(d.getNode(), new Tooltip(d.getYValue().toString() + " Feet/Sec"));
+    @Override
+    public void accept(ConnectionNotification connectionNotification) {
+        for(Node n : menu.getChildren()) {
+            Button b = (Button) n;
+            if(subsystems.containsKey(b.getText())) {
+                menu.getChildren().remove(n);
             }
         }
 
-        root.setCenter(home_pane);
+        subsystems.clear();
 
-        Compass compass = new Compass();
-        state_graphs.getChildren().add(compass);
+        if(connectionNotification.connected) {
+            connectionStatus.setFill(Color.GREEN);
+            connectionName.setText(mainTable.getEntry("name").getString(""));
 
-        Compass compass2 = new Compass();
-        state_graphs.getChildren().add(compass2);
-
-        ParameterTextbox angle = new ParameterTextbox("Angle");
-        angle.textbox.setOnAction(event -> {
-            try {
-                angle.value = Double.valueOf(angle.textbox.getText());
-                compass.setAngle(angle.value);
-            } catch (Exception e) { }
-        });
-        parameters.getChildren().addAll(angle.label, angle.textbox);
-
-        ParameterTextbox P = new ParameterTextbox("P");
-        ParameterTextbox I = new ParameterTextbox("I");
-        ParameterTextbox D = new ParameterTextbox("D");
-        parameters.getChildren().addAll(P.label, P.textbox, I.label, I.textbox, D.label, D.textbox);
-
-        //window.setFullScreen(true);
+            for(String subtable : subsystemTable.getSubTables()) {
+                Subsystem subsystem = new Subsystem(subtable);
+                subsystems.put(subtable, subsystem );
+                SubsystemPage page = new SubsystemPage(subsystem);
+                Platform.runLater(() -> addMenuButton(subtable, page));
+            }
+        } else {
+            connectionStatus.setFill(Color.RED);
+            connectionName.setText("No Connection");
+        }
     }
 }

@@ -1,4 +1,4 @@
-package team4618.dashboard;
+package team4618.dashboard.components;
 
 import javafx.geometry.Point2D;
 import javafx.scene.canvas.Canvas;
@@ -14,8 +14,7 @@ public class Compass extends Canvas {
         draw();
     }
 
-    public void draw()
-    {
+    public void draw() {
         gc.setFill(Color.GREY);
         gc.setStroke(Color.BLACK);
         gc.setLineWidth(3);

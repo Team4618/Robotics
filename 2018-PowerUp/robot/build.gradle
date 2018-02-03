@@ -3,10 +3,6 @@ apply plugin: "jaci.openrio.gradle.GradleRIO"
 sourceSets.main.java.srcDirs = [
         'src/main/java']
 
-compileJava {
-    options.compilerArgs << '-parameters'
-}
-
 deploy {
     targets {
         target("roborio", jaci.openrio.gradle.frc.RoboRIO) {
