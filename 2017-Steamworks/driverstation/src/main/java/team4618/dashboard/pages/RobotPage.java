@@ -11,15 +11,15 @@ public class RobotPage extends VBox {
         this.getChildren().add(testGraph);
 
         for(int i = 0; i < 110; i++) {
-            testGraph.addData("Test1", "Feet", i * Math.sin(i), i*10);
+            testGraph.addData("Test1", MultiLineGraph.Units.Feet, i * Math.sin(i), i*10);
         }
 
         for(int i = 0; i < 100; i++) {
-            testGraph.addData("Test2", "Unitless", 0.7 * Math.sin(i), i*10);
+            testGraph.addData("Test2", MultiLineGraph.Units.Unitless, 0.7 * Math.sin(i), i*10);
         }
 
         for(int i = 0; i < 10; i++) {
-            testGraph.addData("Test3", "Degrees", i * 10, 1000);
+            testGraph.addData("Test3", MultiLineGraph.Units.Degrees, i * 10, 1000);
         }
     }
 }
