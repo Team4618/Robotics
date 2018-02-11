@@ -135,7 +135,8 @@ public class DriveSubsystem extends Subsystem {
 
     public double getAngle() { return canonicalizeAngle(navx.getAngle()); }
 
-    @Command
+    //@Command("Turn to %")
+    @Command()
     public boolean turnToAngle(Robot.CommandState commandState, @Unit(Degrees) double angle) {
         if(commandState.init)
             initPID();
@@ -159,12 +160,6 @@ public class DriveSubsystem extends Subsystem {
             stopPID();
 
         return turn_done;
-    }
-
-    //TODO: pathfinder
-    @Command
-    public boolean goTo() {
-        return false;
     }
 
     public void postState() {

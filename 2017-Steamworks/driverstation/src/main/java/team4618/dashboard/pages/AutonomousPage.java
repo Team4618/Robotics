@@ -2,199 +2,216 @@ package team4618.dashboard.pages;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Node;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
-import team4618.dashboard.Main;
 import team4618.dashboard.components.FieldTopdown;
 
 import java.util.ArrayList;
 
-public class AutonomousPage extends ScrollPane implements FieldTopdown.FieldOverlayProvider {
+public class AutonomousPage extends ScrollPane {
     VBox content = new VBox();
     HBox buttons = new HBox();
-    FieldTopdown pathDrawer = new FieldTopdown(this);
-
-    Node currentEditor = null;
-
-    public static class AutonomousCommand {
-        public String subsystemName;
-        public String commandName;
-        public double[] params;
-
-        public AutonomousCommand(String sName, String cName) {
-            subsystemName = sName;
-            commandName = cName;
-        }
-    }
-
-    public static class PathEvent {
-        FieldTopdown.Point pos;
-        ArrayList<AutonomousCommand> commands = new ArrayList<>();
-    }
-
-    public ArrayList<PathEvent> path = new ArrayList<>();
-
-    public PathEvent draggingEvent = null;
-    public PathEvent selectedEvent = null;
-
-    public class AutonomousCommandBlock extends VBox {
-        ComboBox<String> subsystemBox = new ComboBox<>();
-        ComboBox<String> commandBox = new ComboBox<>();
-        VBox parameters = new VBox();
-
-        public AutonomousCommandBlock() {
-            Button up = new Button("Up");
-            Button down = new Button("Down");
-            Button delete = new Button("Delete");
-
-            commandBox.setDisable(true);
-            commandBox.valueProperty().addListener((obsV, oldV, newV) -> {
-                Main.Subsystem.CommandParam[] cParams = Main.subsystems.get(subsystemBox.getValue()).commands.get(newV);
-
-                parameters.getChildren().clear();
-                for(Main.Subsystem.CommandParam cParam : cParams) {
-                    TextField paramBox = new TextField();
-                    Tooltip.install(paramBox, new Tooltip(cParam.name + " " + cParam.unit));
-                    parameters.getChildren().add(paramBox);
-                }
-            });
-
-            subsystemBox.getItems().addAll(Main.subsystems.keySet());
-            subsystemBox.valueProperty().addListener((obsV, oldV, newV) -> {
-                commandBox.getItems().clear();
-                commandBox.getItems().addAll(Main.subsystems.get(newV).commands.keySet());
-                commandBox.setDisable(commandBox.getItems().size() == 0);
-            });
-
-            this.getChildren().addAll(up, down, delete, subsystemBox, commandBox);
-            this.setPadding(new Insets(10));
-            this.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
-        }
-
-        public AutonomousCommand toCommand() {
-            AutonomousCommand command = new AutonomousCommand(subsystemBox.getValue(), commandBox.getValue());
-            Main.Subsystem.CommandParam[] cParams = Main.subsystems.get(subsystemBox.getValue()).commands.get(commandBox.getValue());
-            command.params = new double[cParams.length];
-            //TODO: get params from text boxes
-            return command;
-        }
-    }
+    FieldTopdown pathDrawer = new FieldTopdown(this::onClick);
+    VBox editor = new VBox();
 
     public AutonomousPage() {
         Button upload = new Button("Upload");
+        Button download = new Button("Download");
         Button openFile = new Button("Open File");
         Button saveFile = new Button("Save File");
-        buttons.getChildren().addAll(upload, openFile, saveFile);
+        buttons.getChildren().addAll(upload, download, openFile, saveFile);
         buttons.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
         content.getChildren().add(buttons);
 
+        pathDrawer.overlay.add(new StartingPosition(12, 40));
+        pathDrawer.overlay.add(new StartingPosition(12, 70));
+        pathDrawer.overlay.add(new StartingPosition(12, 100));
         pathDrawer.vboxSizing(content);
-        content.getChildren().add(pathDrawer);
+        editor.prefWidthProperty().bind(content.widthProperty());
+        content.getChildren().addAll(pathDrawer, editor);
 
-        VBox testEditor = new VBox();
-
-        //TODO: Drag to reorder
-        AutonomousCommandBlock commandBlock = new AutonomousCommandBlock();
-        testEditor.getChildren().add(commandBlock);
-
-        //TODO: add command button
-        VBox addCommand = new VBox();
-        addCommand.setPadding(new Insets(10));
-        addCommand.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
-
-        addCommand.getChildren().add(new Button("Elevator -> goToHeight"));
-        addCommand.getChildren().add(new Button("Intake -> in"));
-        addCommand.getChildren().add(new Button("Intake -> eject"));
-
-        testEditor.getChildren().add(addCommand);
-        setCurrentEditor(testEditor);
-
-        //TODO: get this to properly size without a horizontal scroll bar
         content.prefWidthProperty().bind(this.widthProperty());
         content.setAlignment(Pos.TOP_CENTER);
         this.setContent(content);
     }
 
-    public void setCurrentEditor(Node newEditor) {
-        if(currentEditor != null) {
-            content.getChildren().remove(currentEditor);
-        }
+    public PathNode selected;
+    public PathNode startingNode;
 
-        content.getChildren().add(newEditor);
-        currentEditor = newEditor;
+    public void deleteNodeOuts(PathNode node) {
+        for(Drive outPath : node.outPaths) {
+            deleteNodeOuts(outPath.end);
+            pathDrawer.overlay.remove(outPath);
+        }
+        pathDrawer.overlay.remove(node);
     }
 
-    public void drawOverlay() {
-        GraphicsContext gc = pathDrawer.gc;
+    public static ArrayList<AutonomousCommandTemplate> commandTemplates = new ArrayList<>();
+    static {
+        AutonomousCommandTemplate elevGoToHeight = new AutonomousCommandTemplate();
+        elevGoToHeight.commandName = "goToHeight";
+        elevGoToHeight.subsystemName = "Elevator";
+        elevGoToHeight.parameterNames = new String[] {"height"};
+        elevGoToHeight.parameterUnits = new String[] {"Feet"};
+        commandTemplates.add(elevGoToHeight);
 
-        gc.setStroke(Color.BLACK);
-        for (int i = 0; i < path.size() - 1; i++) {
-            gc.strokeLine(path.get(i).pos.x, path.get(i).pos.y, path.get(i + 1).pos.x, path.get(i + 1).pos.y);
-        }
+        AutonomousCommandTemplate intakeIn = new AutonomousCommandTemplate();
+        intakeIn.commandName = "in";
+        intakeIn.subsystemName = "Intake";
+        intakeIn.parameterNames = new String[] {};
+        intakeIn.parameterUnits = new String[] {};
+        commandTemplates.add(intakeIn);
 
-        if(pathDrawer.startingPosition != null) {
-            if (path.size() != 0) {
-                gc.setStroke(Color.BLACK);
-                gc.strokeLine(path.get(0).pos.x, path.get(0).pos.y, pathDrawer.startingPosition.x, pathDrawer.startingPosition.y);
+        AutonomousCommandTemplate intakeOut = new AutonomousCommandTemplate();
+        intakeOut.commandName = "out";
+        intakeOut.subsystemName = "Intake";
+        intakeOut.parameterNames = new String[] {};
+        intakeOut.parameterUnits = new String[] {};
+        commandTemplates.add(intakeOut);
+    }
+
+    public void setSelected(PathNode node) {
+        selected = node;
+        editor.getChildren().clear();
+
+        if(node != null) {
+            FlowPane addCommand = new FlowPane();
+            addCommand.setPadding(new Insets(10));
+            addCommand.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
+            addCommand.prefWidthProperty().bind(editor.widthProperty());
+
+            for(AutonomousCommandTemplate commandTemplate : commandTemplates) {
+                addCommand.getChildren().add(new Button(commandTemplate.subsystemName + " -> " + commandTemplate.commandName));
             }
 
-            gc.setFill(Color.AQUAMARINE);
-            gc.fillOval(pathDrawer.startingPosition.x - 3, pathDrawer.startingPosition.y - 3, 6, 6);
-        }
-
-        for(PathEvent point : path) {
-            Rectangle bounds = new Rectangle(point.pos.x - 3, point.pos.y - 3, 6, 6);
-            gc.setFill(Color.GREENYELLOW);
-            gc.setFill(selectedEvent == point ? Color.CRIMSON : gc.getFill());
-            gc.fillRect(bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight());
-        }
-
-        if(pathDrawer.drawMouse) {
-            //TODO: draw closest place on path to cursor, right click to add event there, left click to select
-            //TODO: profile editor for selected path
-        }
-    }
-
-    public void onDrag(double x, double y) {
-        if(draggingEvent != null) {
-            draggingEvent.pos.x = x;
-            draggingEvent.pos.y = y;
-        }
-    }
-
-    public void onMouseRelease(double x, double y) {
-        if(draggingEvent != null) {
-            selectedEvent = draggingEvent;
-            //TODO: display this event's command list
-            //setCurrentEditor();
-            draggingEvent = null;
-        } else {
-            PathEvent pathEvent = new PathEvent();
-            pathEvent.pos = new FieldTopdown.Point(x, y);
-            path.add(pathEvent);
-        }
-    }
-
-    public void onMousePressed(double x, double y) {
-        for(PathEvent point : path) {
-            Rectangle bounds = new Rectangle(point.pos.x - 3, point.pos.y - 3, 6, 6);
-            if(bounds.contains(x, y)) {
-                draggingEvent = point;
+            //TODO: add command blocks, update them whenever the commands array is changed
+            {
+                HBox command = new HBox();
+                command.setPadding(new Insets(10));
+                command.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
+                command.prefWidthProperty().bind(editor.widthProperty());
+                command.getChildren().add(new Label("¯\\_(ツ)_/¯"));
             }
+
+            Button delete = new Button("Delete");
+            delete.setOnAction(evt -> {
+                deleteNodeOuts(node);
+                if (node.inPath != null) {
+                    pathDrawer.overlay.remove(node.inPath);
+                }
+                if (node == startingNode) {
+                    startingNode = null;
+                }
+                if (node == selected) {
+                    setSelected(null);
+                }
+                pathDrawer.overlay.remove(node);
+            });
+
+            editor.getChildren().addAll(delete, /*command,*/ addCommand);
         }
     }
 
-    public AutonomousCommand[] getCommands() {
-        //TODO: generate command list from turns, drives & event commands
-        return null;
+    public void onClick(double x, double y) {
+        if(selected != null) {
+            PathNode newTurn = new PathNode(x, y);
+            Drive newDrive = new Drive(selected, newTurn);
+            pathDrawer.overlay.add(newDrive);
+            pathDrawer.overlay.add(newTurn);
+            setSelected(newTurn);
+        }
     }
 
-    //TODO: Event creator (command editor & Profile editor)
+    public static class AutonomousCommandTemplate {
+        String subsystemName;
+        String commandName;
+        String[] parameterUnits;
+        String[] parameterNames;
+        String formatString;
+    }
 
-    //TODO: path finding?
-    //TODO: decision list?
+    public static class AutonomousCommand {
+        AutonomousCommandTemplate template;
+        double[] parameterValues;
+    }
+
+    public class PathNode extends FieldTopdown.Drawable {
+        public ArrayList<Drive> outPaths = new ArrayList<>();
+        public Drive inPath;
+        public ArrayList<AutonomousCommand> commands = new ArrayList<>();
+
+        public PathNode(double nX, double nY) { x = nX; y = nY; }
+
+        public void draw(GraphicsContext gc) {
+            gc.setFill(this == pathDrawer.hot ? Color.RED : Color.GREEN);
+            if(selected == this) gc.setFill(Color.LAVENDERBLUSH);
+            gc.fillOval(-5, -5, pathDrawer.getPixelPerInch() * 10, pathDrawer.getPixelPerInch() * 10);
+        }
+
+        public boolean contains(double nX, double nY) {
+            return Math.sqrt((x - nX) * (x - nX) + (y - nY) * (y - nY)) < 10;
+        }
+
+        public void drag(double nX, double nY) {
+            x = nX;
+            y = nY;
+        }
+
+        public void click() {
+            setSelected(this);
+        }
+    }
+
+    public class Drive extends FieldTopdown.Drawable {
+        PathNode beginning;
+        PathNode end;
+
+        public Drive(PathNode b, PathNode e) {
+            beginning = b;
+            beginning.outPaths.add(this);
+            end = e;
+            e.inPath = this;
+        }
+
+        public void draw(GraphicsContext gc) {
+            gc.setStroke(Color.BLUE);
+            gc.setLineWidth(4);
+            gc.strokeLine(beginning.x, beginning.y, end.x, end.y);
+        }
+
+        public boolean contains(double nX, double nY) {
+            return false; //TODO: this
+        }
+    }
+
+    public class StartingPosition extends FieldTopdown.Drawable {
+        public StartingPosition(double nX, double nY) { x = nX; y = nY; }
+
+        public void draw(GraphicsContext gc) {
+            gc.setStroke(this == pathDrawer.hot ? Color.RED : Color.GREEN);
+            gc.setLineWidth(2);
+            gc.strokeOval(-8, -8, pathDrawer.getPixelPerInch() * 16, pathDrawer.getPixelPerInch() * 16);
+        }
+
+        public boolean contains(double nX, double nY) {
+            return Math.sqrt((x - nX) * (x - nX) + (y - nY) * (y - nY)) < 10;
+        }
+
+        public void click() {
+            PathNode newStartingNode = new PathNode(x, y);
+            pathDrawer.overlay.add(newStartingNode);
+
+            if(startingNode != null) {
+                newStartingNode.outPaths = startingNode.outPaths;
+                for(Drive outPath : newStartingNode.outPaths) {
+                    outPath.beginning = newStartingNode;
+                }
+                pathDrawer.overlay.remove(startingNode);
+            }
+            startingNode = newStartingNode;
+            setSelected(startingNode);
+        }
+    }
 }

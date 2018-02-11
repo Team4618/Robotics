@@ -8,45 +8,78 @@ import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
+import team4618.robot.subsystems.DriveSubsystem;
+import team4618.robot.subsystems.ElevatorSubsystem;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Robot extends TimedRobot {
     public Joystick driver = new Joystick(0);
-    public DriveSubsystem driveSubsystem = new DriveSubsystem();
+    public Joystick op = new Joystick(1);
+
     public static NetworkTableInstance network;
     public static NetworkTable table;
-    public static NetworkTable currentlyExecutingTable;
     public static NetworkTable autoTable;
 
-    public WPI_TalonSRX elevatorShepherd = new WPI_TalonSRX(58);
-    public WPI_VictorSPX elevatorSheep = new WPI_VictorSPX(56);
+    DriveSubsystem driveSubsystem = new DriveSubsystem();
+    ElevatorSubsystem elevatorSubsystem = new ElevatorSubsystem();
 
-    public WPI_VictorSPX leftIntake = new WPI_VictorSPX(50);
-    public WPI_VictorSPX rightIntake = new WPI_VictorSPX(3);
+    CommandSequence autoProgram;
 
     public void robotInit() {
         network = NetworkTableInstance.getDefault();
         table = network.getTable("Custom Dashboard");
         table.getEntry("name").setValue("Crumb Tray");
-        currentlyExecutingTable = network.getTable("Custom Dashboard/Executing");
         autoTable = network.getTable("Custom Dashboard/Autonomous");
+        autoProgram = new CommandSequence(network.getTable("Custom Dashboard/Executing"));
         Subsystems.init();
-
-        elevatorSheep.follow(elevatorShepherd);
     }
 
     public void robotPeriodic() {
         Subsystems.postState();
+
+        if(driver.getRawButton(4)) {
+            driveSubsystem.navx.reset();
+        }
     }
 
-    public void teleopInit() { }
+    public void autonomousInit() {
+        autoProgram.reset();
+
+        String[] ordered = autoTable.getSubTables().toArray(new String[0]);
+        Arrays.sort(ordered);
+        for (String i : ordered) {
+            NetworkTable table = autoTable.getSubTable(i);
+
+            if(table.containsKey("Subsystem Name") && table.containsKey("Command Name") && table.containsKey("Params")) {
+                autoProgram.addCommand(table.getEntry("Subsystem Name").getString(""),
+                                       table.getEntry("Command Name").getString(""),
+                                       table.getEntry("Params").getDoubleArray(new double[0]));
+            }
+        }
+    }
+
+    public void autonomousPeriodic() {
+        autoProgram.run();
+    }
+
+    /*
+    public void autonomousPeriodic() {
+        driveSubsystem.left.setSetpoint(4);
+        driveSubsystem.right.setSetpoint(4);
+    }
+    */
+
+    public void teleopInit() {
+        elevatorSubsystem.intakeUp = true;
+        elevatorSubsystem.intakeOpen = false;
+    }
 
     public void teleopPeriodic() {
-        double multiplier = (driver.getRawButton(5) || driver.getRawButton(6)) ? 1.0 : 0.80;
-        driveSubsystem.shifter.set(driver.getRawButton(5) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
-        driveSubsystem.teleopDrive.arcadeDrive(0.80 * driver.getRawAxis(4), -multiplier * driver.getRawAxis(1));
+        driveSubsystem.doTeleop(driver);
+        elevatorSubsystem.doTeleop(op);
     }
 
     public void disabledInit() { }

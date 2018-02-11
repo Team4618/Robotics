@@ -1,0 +1,40 @@
+repositories {
+    mavenCentral()
+    maven {
+        url "http://first.wpi.edu/FRC/roborio/maven/release/"
+    }
+}
+
+dependencies {
+    compile 'edu.wpi.first.ntcore:ntcore-java:4.0.0'
+    compile 'edu.wpi.first.wpiutil:wpiutil-java:3.0.0'
+}
+
+jar {
+    from configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+    // I need to set my manifest up so the coprocessor knows where my main class is
+    manifest {
+        attributes 'Main-Class': 'team4618.dashboard.Main'
+    }
+}
+
+task unpackNtcoreJNI(type: Copy) {
+    def root = project.rootDir.path
+
+    mkdir root + "/driverstation/build"
+    mkdir root + "/driverstation/build/tmp"
+    mkdir root + "/driverstation/build/libs"
+
+    def f = new File(root + '/driverstation/build/tmp/ntcore.jar')
+    if (!f.exists()) {
+        println 'Downloading ntcore JNI'
+        new URL('http://first.wpi.edu/FRC/roborio/maven/release/edu/wpi/first/ntcore/ntcore-jni/4.0.0/ntcore-jni-4.0.0-windowsx86-64.jar').withInputStream { i -> f.withOutputStream { it << i }}
+    }
+
+    from zipTree(f).matching {
+        include '**/ntcore.dll'
+    }.files
+    into root + "/driverstation/build/libs/"
+}
+
+build.finalizedBy(unpackNtcoreJNI)

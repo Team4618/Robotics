@@ -1,6 +1,7 @@
 package team4618.robot;
 
 import edu.wpi.first.networktables.*;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -13,13 +14,11 @@ import static team4618.robot.Robot.network;
 
 public abstract class Subsystem implements TableEntryListener {
     @Retention(RetentionPolicy.RUNTIME) public @interface ParameterEnum { }
-    @Retention(RetentionPolicy.RUNTIME) public @interface Command { }
+    @Retention(RetentionPolicy.RUNTIME) public @interface Command { String value() default ""; }
     public enum Units { Feet, FeetPerSecond, Degrees, DegreesPerSecond, Seconds, Unitless }
     @Retention(RetentionPolicy.RUNTIME) public @interface Unit { Units value(); }
 
     public abstract void init();
-    public abstract void enable();
-    public abstract void disable();
     public void updateParameters() { }
     public abstract void postState();
     public abstract String name();
@@ -57,30 +56,30 @@ public abstract class Subsystem implements TableEntryListener {
                 ArrayList<String> units = new ArrayList<>();
 
                 for(Parameter param : function.getParameters()) {
-                    //This'll skip the commandState param because it doesnt have the Unit annotation
-                    //thats more of a coincidence than a solution though
-                    if(param.isAnnotationPresent(Unit.class)) {
+                    if(param.isAnnotationPresent(Unit.class) && (param.getType() != CommandSequence.CommandState.class)) {
                         params.add(param.getName());
                         units.add(param.getAnnotation(Unit.class).value().toString());
                     }
                 }
 
+                /*
                 String[] paramsArray = new String[params.size()];
                 for(int i = 0; i < paramsArray.length; i++) { paramsArray[i] = params.get(i); }
 
                 String[] unitsArray = new String[units.size()];
                 for(int i = 0; i < unitsArray.length; i++) { unitsArray[i] = units.get(i); }
+                */
 
-                commandTable.getEntry(function.getName() + "_ParamNames").setStringArray(paramsArray);
-                commandTable.getEntry(function.getName() + "_ParamUnits").setStringArray(unitsArray);
+                commandTable.getEntry(function.getName() + "_ParamNames").setStringArray(params.toArray(new String[params.size()])); //paramsArray);
+                commandTable.getEntry(function.getName() + "_ParamUnits").setStringArray(units.toArray(new String[units.size()])); //unitsArray);
             }
         }
 
         if(parameters != null) {
             HashMap<String, Double> paramFile = FileIO.MapFromFile(this);
             for (Enum p : parameters) {
-
                 Double param = paramFile.containsKey(p.toString()) ? paramFile.get(p.toString()) : 0.0;
+                System.out.println(name() + ":" + p.toString() + " = " + param);
                 parameterTable.getEntry(p.toString()).setValue(param);
             }
         }
@@ -102,5 +101,6 @@ public abstract class Subsystem implements TableEntryListener {
     public void PostState(String name, Units unit, double value) {
         stateTable.getEntry(name + "_Value").setValue(value);
         stateTable.getEntry(name + "_Unit").setValue(unit.toString());
+        SmartDashboard.putNumber(name, value);
     }
 }
