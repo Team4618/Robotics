@@ -88,9 +88,9 @@ public class Main extends Application implements Consumer<ConnectionNotification
     @Override
     public void start(Stage window) {
         network = NetworkTableInstance.getDefault();
-        network.setServerTeam(4618);
-        //network.startClient();
-        network.addConnectionListener(this, true);
+        //network.setServerTeam(4618);
+        network.setServer("localhost");
+        network.startClient();
         mainTable = network.getTable("Custom Dashboard");
         subsystemTable = network.getTable("Custom Dashboard/Subsystem");
         autoTable = network.getTable("Custom Dashboard/Autonomous");
@@ -143,6 +143,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
         root.setCenter(autonomousPage);//homePage);
         redrawTask.setCycleCount(Timeline.INDEFINITE);
         redrawTask.play();
+        network.addConnectionListener(this, true);
     }
 
     public void addMenuButton(String name, Node n) {

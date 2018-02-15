@@ -1,19 +1,22 @@
 package team4618.dashboard.pages;
 
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Line;
 import team4618.dashboard.components.FieldTopdown;
 
 import java.util.ArrayList;
 
-public class AutonomousPage extends ScrollPane {
+public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
     VBox content = new VBox();
     HBox buttons = new HBox();
-    FieldTopdown pathDrawer = new FieldTopdown(this::onClick);
+    FieldTopdown pathDrawer = new FieldTopdown(this);
     VBox editor = new VBox();
 
     public AutonomousPage() {
@@ -25,9 +28,9 @@ public class AutonomousPage extends ScrollPane {
         buttons.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
         content.getChildren().add(buttons);
 
-        pathDrawer.overlay.add(new StartingPosition(12, 40));
-        pathDrawer.overlay.add(new StartingPosition(12, 70));
-        pathDrawer.overlay.add(new StartingPosition(12, 100));
+        //pathDrawer.overlay.add(new StartingPosition(12, 40));
+        //pathDrawer.overlay.add(new StartingPosition(12, 70));
+        //pathDrawer.overlay.add(new StartingPosition(12, 100));
         pathDrawer.vboxSizing(content);
         editor.prefWidthProperty().bind(content.widthProperty());
         content.getChildren().addAll(pathDrawer, editor);
@@ -86,6 +89,14 @@ public class AutonomousPage extends ScrollPane {
         intakeOut.parameterNames = new String[] {};
         intakeOut.parameterUnits = new String[] {};
         commandTemplates.add(intakeOut);
+    }
+
+    public static ArrayList<String> conditionals = new ArrayList<>();
+    static {
+        conditionals.add("leftSwitchOurs");
+        conditionals.add("rightSwitchOurs");
+        conditionals.add("leftScaleOurs");
+        conditionals.add("rightScaleOurs");
     }
 
     public void addNodesCommands(ArrayList<AutonomousCommand> commands, PathNode node) {
@@ -150,6 +161,14 @@ public class AutonomousPage extends ScrollPane {
             });
             menu.getChildren().add(delete);
 
+            for(Drive drive : selected.outPaths) {
+                ComboBox conditional = new ComboBox(FXCollections.observableArrayList(conditionals));
+                conditional.setValue(drive.conditional);
+                //conditional.prefWidthProperty().bind(editor.widthProperty());
+                conditional.setOnAction(evt -> drive.conditional = (String) conditional.getValue());
+                editor.getChildren().add(conditional);
+            }
+
             for(AutonomousCommand command : selected.commands) {
                 VBox commandBlock = new VBox();
                 commandBlock.setPadding(new Insets(10));
@@ -213,6 +232,23 @@ public class AutonomousPage extends ScrollPane {
         }
     }
 
+    public void onClickStartingLocation(FieldTopdown.StartingPosition pos) {
+        PathNode newStartingNode = new PathNode(pos.x, pos.y);
+        newStartingNode.draggable = false;
+        pathDrawer.overlay.add(newStartingNode);
+
+        if(startingNode != null) {
+            newStartingNode.outPaths = startingNode.outPaths;
+            for(Drive outPath : newStartingNode.outPaths) {
+                outPath.beginning = newStartingNode;
+            }
+            pathDrawer.overlay.remove(startingNode);
+        }
+
+        startingNode = newStartingNode;
+        setSelected(startingNode);
+    }
+
     public static class AutonomousCommandTemplate {
         String subsystemName;
         String commandName;
@@ -235,13 +271,14 @@ public class AutonomousPage extends ScrollPane {
         public ArrayList<Drive> outPaths = new ArrayList<>();
         public Drive inPath;
         public ArrayList<AutonomousCommand> commands = new ArrayList<>();
+        public boolean draggable = true;
 
         public PathNode(double nX, double nY) { x = nX; y = nY; }
 
-        public void draw(GraphicsContext gc) {
-            gc.setFill(this == pathDrawer.hot ? Color.RED : Color.GREEN);
+        public void draw(GraphicsContext gc, FieldTopdown field) {
+            gc.setFill(this == field.hot ? Color.RED : Color.GREEN);
             if(selected == this) gc.setFill(Color.LAVENDERBLUSH);
-            gc.fillOval(-5, -5, pathDrawer.getPixelPerInch() * 10, pathDrawer.getPixelPerInch() * 10);
+            gc.fillOval(-5, -5, field.getPixelPerInch() * 10, field.getPixelPerInch() * 10);
         }
 
         public boolean contains(double nX, double nY) {
@@ -249,12 +286,14 @@ public class AutonomousPage extends ScrollPane {
         }
 
         public void drag(double nX, double nY) {
-            x = nX;
-            y = nY;
-            rebuildEditor();
+            if(draggable) {
+                x = nX;
+                y = nY;
+                rebuildEditor();
+            }
         }
 
-        public void click() {
+        public void click(FieldTopdown fieldTopdown) {
             if(this == selected) {
                 setSelected(null);
             } else {
@@ -267,6 +306,8 @@ public class AutonomousPage extends ScrollPane {
         PathNode beginning;
         PathNode end;
 
+        String conditional;
+
         public Drive(PathNode b, PathNode e) {
             beginning = b;
             beginning.outPaths.add(this);
@@ -274,43 +315,18 @@ public class AutonomousPage extends ScrollPane {
             e.inPath = this;
         }
 
-        public void draw(GraphicsContext gc) {
-            gc.setStroke(Color.BLUE);
+        public void draw(GraphicsContext gc, FieldTopdown field) {
+            gc.setStroke(this == field.hot ? Color.RED : Color.BLUE);
             gc.setLineWidth(4);
             gc.strokeLine(beginning.x, beginning.y, end.x, end.y);
         }
 
         public boolean contains(double nX, double nY) {
-            return false;
-        }
-    }
-
-    public class StartingPosition extends FieldTopdown.Drawable {
-        public StartingPosition(double nX, double nY) { x = nX; y = nY; }
-
-        public void draw(GraphicsContext gc) {
-            gc.setStroke(this == pathDrawer.hot ? Color.RED : Color.GREEN);
-            gc.setLineWidth(2);
-            gc.strokeOval(-8, -8, pathDrawer.getPixelPerInch() * 16, pathDrawer.getPixelPerInch() * 16);
+            return new Line(beginning.x, beginning.y, end.x, end.y).contains(nX, nY);
         }
 
-        public boolean contains(double nX, double nY) {
-            return Math.sqrt((x - nX) * (x - nX) + (y - nY) * (y - nY)) < 10;
-        }
+        public void click(FieldTopdown field) {
 
-        public void click() {
-            PathNode newStartingNode = new PathNode(x, y);
-            pathDrawer.overlay.add(newStartingNode);
-
-            if(startingNode != null) {
-                newStartingNode.outPaths = startingNode.outPaths;
-                for(Drive outPath : newStartingNode.outPaths) {
-                    outPath.beginning = newStartingNode;
-                }
-                pathDrawer.overlay.remove(startingNode);
-            }
-            startingNode = newStartingNode;
-            setSelected(startingNode);
         }
     }
 }

@@ -12,7 +12,7 @@ import javafx.scene.paint.Color;
 import team4618.dashboard.Main;
 import team4618.dashboard.components.FieldTopdown;
 
-public class HomePage extends VBox {
+public class HomePage extends VBox implements FieldTopdown.OnClick {
     FieldTopdown liveFieldView;
     VBox currentlyExecuting;
 
@@ -21,7 +21,7 @@ public class HomePage extends VBox {
     public HomePage() {
         this.setAlignment(Pos.TOP_CENTER);
 
-        liveFieldView = new FieldTopdown();
+        liveFieldView = new FieldTopdown(this);
         liveFieldView.vboxSizing(this);
         Main.redrawCallbacks.add(this::updateLiveView);
         this.getChildren().add(liveFieldView);
@@ -33,24 +33,43 @@ public class HomePage extends VBox {
         this.getChildren().add(currentlyExecuting);
     }
 
+    public void onClick(double x, double y) { }
+
+    public void onClickStartingLocation(FieldTopdown.StartingPosition pos) {
+        liveFieldView.overlay.clear();
+        currentPosition = new RobotPosition(pos.x, pos.y, System.currentTimeMillis() / 1000.0);
+    }
+
     public class RobotPosition extends FieldTopdown.Drawable {
-        //TODO: track time
         double time;
 
-        public RobotPosition(double x, double y) {
+        public RobotPosition(double x, double y, double time) {
             this.x = x;
             this.y = y;
+            this.time = time;
             currentPosition = this;
             liveFieldView.overlay.add(this);
         }
 
-        public void draw(GraphicsContext gc) { gc.fillOval(-3, -3, liveFieldView.getPixelPerInch() * 6, liveFieldView.getPixelPerInch() * 6); }
+        public void draw(GraphicsContext gc, FieldTopdown field) {
+            gc.setFill((this == currentPosition) ? Color.AZURE : Color.BLUEVIOLET);
+            gc.fillOval(-3, -3, field.getPixelPerInch() * 6, field.getPixelPerInch() * 6);
+        }
+
         public boolean contains(double x, double y) { return false; }
     }
 
     public void updateLiveView() {
-        //TODO: implement this
-        new RobotPosition(0, 0);
+        if(currentPosition != null) {
+            double speed = 12 * Main.subsystems.get("Drive").stateTable.getEntry("Speed_Value").getDouble(0);
+            double angle = Main.subsystems.get("Drive").stateTable.getEntry("Angle_Value").getDouble(0);
+            double time = System.currentTimeMillis() / 1000.0;
+            double deltat = time - currentPosition.time;
+            System.out.println("Speed " + speed + " Angle " + angle);
+            //System.out.println("Cos(" + angle + ")=" + Math.cos(Math.toRadians(angle)) + " Sin(" + angle + ")=" + Math.sin(Math.toRadians(angle)));
+            new RobotPosition(currentPosition.x + speed * deltat * Math.cos(Math.toRadians(angle)),
+                              currentPosition.y + speed * deltat * Math.sin(Math.toRadians(angle)), time);
+        }
     }
 
     public void rebuildCurrentlyExecuting() {

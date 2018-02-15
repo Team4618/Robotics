@@ -40,7 +40,7 @@ public class DriveSubsystem extends Subsystem {
             PostState(prefix + " Position", Feet, getDistance());
             PostState(prefix + " Raw Position", Unitless, shepherd.getSensorCollection().getQuadraturePosition());
             PostState(prefix + " Setpoint", FeetPerSecond, (shepherd.getControlMode() == ControlMode.Velocity) ? (feet_per_pulse * 10 * shepherd.getClosedLoopTarget(0)) : 0);
-            PostState(prefix + " Power", Unitless, shepherd.getMotorOutputPercent());
+            PostState(prefix + " Power", Percent, shepherd.getMotorOutputPercent());
         }
     }
 
@@ -86,9 +86,21 @@ public class DriveSubsystem extends Subsystem {
     public double sign(double x) { return x / Math.abs(x); }
     public double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
 
+    boolean was9Down = false;
+    boolean lowGear = false;
+
+    //TODO: cleanup the teleop code
+    //Toggler shifterControl = new Toggler(driver, 9, val -> shifter.set(val ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse));
+
     public void doTeleop(Joystick driver) {
-        double multiplier = (driver.getRawButton(5) || driver.getRawButton(6)) ? 1.0 : value(SpeedLimit);
-        shifter.set(driver.getRawButton(5) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+        boolean is9Down = driver.getRawButton(9);
+        if(was9Down && !is9Down) {
+            lowGear = !lowGear;
+        }
+        was9Down = is9Down;
+
+        double multiplier = (lowGear || driver.getRawButton(6)) ? 1.0 : value(SpeedLimit);
+        shifter.set(lowGear ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
 
         //-10 0.6
         double drivePower = -multiplier * driver.getRawAxis(1);
@@ -98,16 +110,17 @@ public class DriveSubsystem extends Subsystem {
             System.out.println("WE GOIN DOWN " + drivePower + " " + left.getRate() + " " + navx.getWorldLinearAccelX());
         }
 
-        teleopDrive.arcadeDrive(value(TurnLimit) * driver.getRawAxis(4), drivePower);
+        teleopDrive.arcadeDrive(value(TurnLimit) * driver.getRawAxis(0), drivePower);
     }
 
     public void postState() {
         left.postState("Left");
         right.postState("Right");
-        PostState("Pitch", Degrees, navx.getPitch());
-        PostState("Roll", Degrees, navx.getRoll());
-        PostState("Yaw", Degrees, navx.getYaw());
+        PostState("Speed", FeetPerSecond, (-left.getRate() + right.getRate()) / 2.0);
         PostState("Angle", Degrees, navx.getAngle());
+        //PostState("Pitch", Degrees, navx.getPitch());
+        //PostState("Roll", Degrees, navx.getRoll());
+        //PostState("Yaw", Degrees, navx.getYaw());
     }
 
     public void resetPID() {

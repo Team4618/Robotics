@@ -38,17 +38,19 @@ public class SubsystemPage extends ScrollPane {
     }
 
     public void onJavafxLoop() {
-        for(String key : subsystem.stateTable.getSubTables()) {
+        for(String key : subsystem.stateTable.getKeys()) {
             if(key.endsWith("_Value")) {
                 String state = key.replace("_Value", "");
                 Units unit = Units.valueOf(subsystem.stateTable.getEntry(state + "_Unit").getString(""));
                 double value = subsystem.stateTable.getEntry(state + "_Value").getDouble(0);
-                long time = System.currentTimeMillis();
+                long time = System.currentTimeMillis() / (1000);
 
                 if (unit == Units.Degrees) {
-                    compass.setAngle(value);
+                    if(state.equals("Angle")){
+                        compass.setAngle(value);
+                    }
                 } else {
-                    graph.addData(state, unit, value, time / 100000);
+                    graph.addData(state, unit, value, time);
                 }
             }
         }

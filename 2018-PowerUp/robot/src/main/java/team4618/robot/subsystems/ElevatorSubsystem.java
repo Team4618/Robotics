@@ -6,6 +6,9 @@ import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.Joystick;
 import team4618.robot.Subsystem;
 
+import team4618.robot.CommandSequence.CommandState;
+import static team4618.robot.Subsystem.Units.*;
+
 public class ElevatorSubsystem extends Subsystem {
 
     public WPI_TalonSRX elevatorShepherd = new WPI_TalonSRX(58);
@@ -23,7 +26,7 @@ public class ElevatorSubsystem extends Subsystem {
     }
 
     public void postState() {
-
+        PostState("Shepherd Current", Unitless, elevatorShepherd.getOutputCurrent());
     }
 
     boolean was3Down = false;
@@ -60,7 +63,7 @@ public class ElevatorSubsystem extends Subsystem {
         intakeHorizontal.set(intakeOpen ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
         intakeVertical.set(intakeUp ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
 
-        //elevatorBrake.set(op.getRawButton(8) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+        elevatorBrake.set(op.getRawButton(8) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
         if(op.getRawButton(6)) {
             elevatorShepherd.set(0.60);
         } else if(op.getRawButton(7)) {
@@ -70,6 +73,11 @@ public class ElevatorSubsystem extends Subsystem {
         }
 
         elevatorShepherd.set(op.getRawAxis(1));
+    }
+
+    @Command
+    public boolean goToHeight(CommandState state, @Unit(Feet) double height) {
+        return false;
     }
 
     public String name() { return "Elevator"; }

@@ -10,6 +10,7 @@ import javafx.scene.transform.Affine;
 import javafx.scene.transform.Scale;
 import javafx.stage.Screen;
 import team4618.dashboard.Main;
+import team4618.dashboard.pages.AutonomousPage;
 
 import java.util.ArrayList;
 
@@ -21,19 +22,20 @@ public class FieldTopdown extends Canvas {
         public double y;
 
         public void drag(double newX, double newY) {}
-        public void click() {}
-        public abstract void draw(GraphicsContext gc);
+        public void click(FieldTopdown field) {}
+        public abstract void draw(GraphicsContext gc, FieldTopdown field);
         public abstract boolean contains(double x, double y);
     }
 
     public interface OnClick {
         void onClick (double x, double y);
+        void onClickStartingLocation(StartingPosition pos);
     }
 
     OnClick onClick;
     public Drawable hot;
 
-    public ArrayList<Drawable> fieldObjects = new ArrayList<>();
+    public static ArrayList<Drawable> fieldObjects = new ArrayList<>();
     public ArrayList<Drawable> overlay = new ArrayList<>();
 
     public FieldTopdown() { this(null); }
@@ -58,12 +60,12 @@ public class FieldTopdown extends Canvas {
             double y = event.getY() / pixelsPerInch;
 
             if(hot != null) {
-                hot.click();
+                hot.click(this);
             } else if(onClick != null) {
                 onClick.onClick(x, y);
             }
 
-            System.out.println(x + " : " + y);
+            System.out.println("Field66 " + x + " : " + y);
         });
 
         this.setOnMouseDragged(event -> {
@@ -105,7 +107,25 @@ public class FieldTopdown extends Canvas {
 
     void draw(Drawable d) {
         gc.translate(d.x, d.y);
-        d.draw(gc);
+        d.draw(gc, this);
         gc.translate(-d.x, -d.y);
+    }
+
+    public static class StartingPosition extends Drawable {
+        public StartingPosition(double nX, double nY) { x = nX; y = nY; }
+
+        public void draw(GraphicsContext gc, FieldTopdown field) {
+            gc.setStroke(this == field.hot ? Color.RED : Color.GREEN);
+            gc.setLineWidth(2);
+            gc.strokeOval(-8, -8, field.getPixelPerInch() * 16, field.getPixelPerInch() * 16);
+        }
+
+        public boolean contains(double nX, double nY) {
+            return Math.sqrt((x - nX) * (x - nX) + (y - nY) * (y - nY)) < 10;
+        }
+
+        public void click(FieldTopdown field) {
+            field.onClick.onClickStartingLocation(this);
+        }
     }
 }

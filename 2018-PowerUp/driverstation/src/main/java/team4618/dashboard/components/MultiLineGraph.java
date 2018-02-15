@@ -14,8 +14,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
+//TODO: make this not trash
 public class MultiLineGraph extends VBox {
-    public enum Units { Feet, FeetPerSecond, Degrees, DegreesPerSecond, Seconds, Unitless }
+    public enum Units { Feet, FeetPerSecond, Degrees, DegreesPerSecond, Seconds, Unitless, Percent }
 
     public static class Entry {
         double value;
@@ -91,7 +92,7 @@ public class MultiLineGraph extends VBox {
 
     public double getY(Units unit, double v) {
         switch (unit) {
-            case Unitless:
+            case Percent:
                 return canvas.getHeight() / 2 - v * (canvas.getHeight() / 2);
             default:
                 return (canvas.getHeight() / 2) - v * (canvas.getHeight() / (unitMax[unit.ordinal()] - unitMin[unit.ordinal()]));
@@ -124,6 +125,7 @@ public class MultiLineGraph extends VBox {
             }
         }
 
+        /*
         gc.setStroke(Color.BLACK);
         for(Units unit : Units.values()) {
             if(drawAxisForUnit[unit.ordinal()]) {
@@ -134,6 +136,7 @@ public class MultiLineGraph extends VBox {
                 gc.strokeLine(canvas.getWidth() - 10, miny, canvas.getWidth(), miny);
             }
         }
+        */
 
         if(drawMouse) {
             double mouseT = (mouseX / canvas.getWidth()) * (maxTime - minTime) + minTime;
@@ -142,7 +145,11 @@ public class MultiLineGraph extends VBox {
             for(Map.Entry<String, Graph> e : graphs.entrySet()) {
                 Graph graph = e.getValue();
                 gc.setStroke(e.getValue().color);
-                gc.strokeText(e.getKey() + ": " + getValueAt(graph, mouseT) + " " + (graph.unit == Units.Unitless ? "" : graph.unit.toString()), 0, 20 + y_count * 20);
+
+                String unitSuffix = (graph.unit == Units.Unitless) ? "" : (" " + graph.unit.toString());
+                if(graph.unit == Units.Percent) unitSuffix = "%";
+
+                gc.strokeText((graph.enabled ? "+" : "-") + e.getKey() + ": " + getValueAt(graph, mouseT) + unitSuffix, 0, 20 + y_count * 20);
                 y_count++;
             }
 
@@ -187,6 +194,5 @@ public class MultiLineGraph extends VBox {
         minTime = maxTime - timeRange;
 
         graph.data.add(new Entry(data, time));
-        //draw();
     }
 }

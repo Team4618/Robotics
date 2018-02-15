@@ -15,7 +15,7 @@ import static team4618.robot.Robot.network;
 public abstract class Subsystem implements TableEntryListener {
     @Retention(RetentionPolicy.RUNTIME) public @interface ParameterEnum { }
     @Retention(RetentionPolicy.RUNTIME) public @interface Command { String value() default ""; }
-    public enum Units { Feet, FeetPerSecond, Degrees, DegreesPerSecond, Seconds, Unitless }
+    public enum Units { Feet, FeetPerSecond, Degrees, DegreesPerSecond, Seconds, Unitless, Percent}
     @Retention(RetentionPolicy.RUNTIME) public @interface Unit { Units value(); }
 
     public abstract void init();
