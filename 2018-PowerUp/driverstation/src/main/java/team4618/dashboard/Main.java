@@ -35,6 +35,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
     public static NetworkTable subsystemTable;
     public static NetworkTable autoTable;
     public static NetworkTable currentlyExecutingTable;
+    public static NetworkTable logicTable;
 
     public static class Subsystem {
         public static class CommandParam { public String name; public String unit; }
@@ -95,6 +96,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
         subsystemTable = network.getTable("Custom Dashboard/Subsystem");
         autoTable = network.getTable("Custom Dashboard/Autonomous");
         currentlyExecutingTable = network.getTable("Custom Dashboard/Executing");
+        logicTable = network.getTable("Custom Dashboard/Logic");
 
         Image logo = new Image(ClassLoader.getSystemClassLoader().getResourceAsStream("logo.png"));
         BackgroundImage[] backgrounds = new BackgroundImage[2];

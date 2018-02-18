@@ -1,5 +1,6 @@
 package team4618.robot;
 
+import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import edu.wpi.first.networktables.NetworkTable;
@@ -61,13 +62,21 @@ public class Robot extends TimedRobot {
                 autoProgram.addCommand(table.getEntry("Subsystem Name").getString(""),
                                        table.getEntry("Command Name").getString(""),
                                        table.getEntry("Params").getDoubleArray(new double[0]));
+            } else if(table.containsKey("Conditional") && table.containsSubTable("Commands")) {
+                //TODO: add conditional branch command
             }
         }
+
+        autoProgram.addCommand("Drive", "driveDistance", new double[] {18, 4, 2, 2});
+        autoProgram.addCommand("Drive", "turnToAngle", new double[] {270, 4, 2, 20});
+        autoProgram.addCommand("Drive", "driveDistance", new double[] {20, 4, 2, 2});
+        autoProgram.addCommand("Drive", "turnToAngle", new double[] {180, 4, 2, 20});
+        autoProgram.addCommand("Drive", "driveDistance", new double[] {14, 4, 2, 2});
+        autoProgram.addCommand("Drive", "turnToAngle", new double[] {90, 4, 2, 20});
+        autoProgram.addCommand("Drive", "driveDistance", new double[] {14, 4, 2, 2});
     }
 
-    public void autonomousPeriodic() {
-        autoProgram.run();
-    }
+    public void autonomousPeriodic() { autoProgram.run(); }
 
     /*
     public void autonomousPeriodic() {
@@ -77,8 +86,8 @@ public class Robot extends TimedRobot {
     */
 
     public void teleopInit() {
-        elevatorSubsystem.intakeUp = true;
-        elevatorSubsystem.intakeOpen = false;
+        //elevatorSubsystem.intakeUp = true;
+        //elevatorSubsystem.intakeOpen = false;
     }
 
     boolean was9Down = false;
@@ -112,20 +121,29 @@ public class Robot extends TimedRobot {
         was6Down = is6Down;
 
         driveSubsystem.shifter.set(lowGear ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
-        driveSubsystem.teleopDrive.arcadeDrive(1.0 * driver.getRawAxis(4), -(lowGear ? 0.85 : 0.85) * driver.getRawAxis(1));
+        driveSubsystem.teleopDrive.arcadeDrive((lowGear ? 1.0 : 0.85) * driver.getRawAxis(0), -(lowGear ? 0.85 : 0.85) * driver.getRawAxis(1));
 
         if(driver.getRawAxis(2) > 0.1) {
             elevatorSubsystem.leftIntake.set(-5 * driver.getRawAxis(2));
-            elevatorSubsystem.rightIntake.set(5 * driver.getRawAxis(2));
+            elevatorSubsystem.rightIntake.set(-5 * driver.getRawAxis(2));
         } else if(driver.getRawAxis(3) > 0.1) {
             elevatorSubsystem.leftIntake.set(0.75);
-            elevatorSubsystem.rightIntake.set(-0.75);
+            elevatorSubsystem.rightIntake.set(0.75);
         } else {
             elevatorSubsystem.leftIntake.set(0);
             elevatorSubsystem.rightIntake.set(0);
         }
 
-        elevatorSubsystem.elevatorShepherd.set(op.getRawAxis(1));
+        elevatorSubsystem.intakeHorizontal.set(op.getRawButton(3) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+        if(op.getRawButton(1)) {
+            elevatorSubsystem.elevatorShepherd.set(op.getRawAxis(1));
+            elevatorSubsystem.leftLift.set(0);
+            elevatorSubsystem.rightLift.set(0);
+        } else {
+            elevatorSubsystem.elevatorShepherd.set(0);
+            elevatorSubsystem.leftLift.set(op.getRawAxis(1));
+            elevatorSubsystem.rightLift.set(-op.getRawAxis(1));
+        }
     }
 
     public void disabledInit() { }

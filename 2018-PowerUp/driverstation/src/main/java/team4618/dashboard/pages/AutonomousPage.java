@@ -1,5 +1,6 @@
 package team4618.dashboard.pages;
 
+import edu.wpi.first.networktables.NetworkTable;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -9,9 +10,18 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
+import team4618.dashboard.Main;
 import team4618.dashboard.components.FieldTopdown;
 
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
 
 public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
     VBox content = new VBox();
@@ -19,8 +29,61 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
     FieldTopdown pathDrawer = new FieldTopdown(this);
     VBox editor = new VBox();
 
+    public void uploadCommandsTo(List<AutonomousCommand> commands, String baseTable) {
+        for(int i = 0; i < commands.size(); i++) {
+            AutonomousCommand command = commands.get(i);
+            NetworkTable currCommandTable = Main.network.getTable(baseTable + "/" + i);
+
+            if(command.commands != null) {
+                currCommandTable.getEntry("Conditional").setString(command.conditional);
+                uploadCommandsTo(Arrays.asList(command.commands), baseTable + "/" + i + "/commands");
+            } else {
+                currCommandTable.getEntry("Subsystem Name").setString(command.getTemplate().subsystemName);
+                currCommandTable.getEntry("Command Name").setString(command.getTemplate().commandName);
+                currCommandTable.getEntry("Params").setDoubleArray(command.parameterValues);
+            }
+        }
+    }
+
+    public void writeCommandsTo(List<AutonomousCommand> commands) {
+            try
+            {
+                FileOutputStream fout = new FileOutputStream ("Filepath.txt");
+                ObjectOutputStream oos = new ObjectOutputStream(fout);
+                oos.writeObject(commands);
+                oos.close();
+            }
+            catch(Exception e) {
+                e.printStackTrace();
+            }
+    }
+
+    public List<AutonomousCommand> readCommansFrom(List<AutonomousCommand> commands){
+        try {
+            FileInputStream fin = new FileInputStream("Filepath.txt");
+            ObjectInputStream ois = new ObjectInputStream(fin);
+            List<AutonomousCommand> c = (List<AutonomousCommand>) ois.readObject();
+            ois.close();
+            return c;
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
     public AutonomousPage() {
         Button upload = new Button("Upload");
+        upload.setOnAction(evt -> {
+            int i = 0;
+            for(String subTable : Main.mainTable.getSubTables()) {
+                if(subTable.startsWith("Autonomous")) {
+                    i = Math.max(i, Integer.valueOf(subTable.replace("Autonomous", "")));
+                }
+            }
+            uploadCommandsTo(getCommandList(), "Custom Dashboard/Autonomous" + i);
+        });
         Button download = new Button("Download");
         Button openFile = new Button("Open File");
         Button saveFile = new Button("Save File");
@@ -51,53 +114,10 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
         pathDrawer.overlay.remove(node);
     }
 
-    public static AutonomousCommandTemplate driveDistance;
-    public static AutonomousCommandTemplate turnToAngle;
-    public static ArrayList<AutonomousCommandTemplate> commandTemplates = new ArrayList<>();
-    static {
-        driveDistance = new AutonomousCommandTemplate();
-        driveDistance.commandName = "driveDistance";
-        driveDistance.subsystemName = "Drive";
-        driveDistance.parameterNames = new String[] {"distance"};
-        driveDistance.parameterUnits = new String[] {"Feet"};
-        commandTemplates.add(driveDistance);
-
-        turnToAngle = new AutonomousCommandTemplate();
-        turnToAngle.commandName = "turnToAngle";
-        turnToAngle.subsystemName = "Drive";
-        turnToAngle.parameterNames = new String[] {"angle"};
-        turnToAngle.parameterUnits = new String[] {"Degrees"};
-        commandTemplates.add(turnToAngle);
-
-        AutonomousCommandTemplate elevGoToHeight = new AutonomousCommandTemplate();
-        elevGoToHeight.commandName = "goToHeight";
-        elevGoToHeight.subsystemName = "Elevator";
-        elevGoToHeight.parameterNames = new String[] {"height"};
-        elevGoToHeight.parameterUnits = new String[] {"Feet"};
-        commandTemplates.add(elevGoToHeight);
-
-        AutonomousCommandTemplate intakeIn = new AutonomousCommandTemplate();
-        intakeIn.commandName = "in";
-        intakeIn.subsystemName = "Intake";
-        intakeIn.parameterNames = new String[] {};
-        intakeIn.parameterUnits = new String[] {};
-        commandTemplates.add(intakeIn);
-
-        AutonomousCommandTemplate intakeOut = new AutonomousCommandTemplate();
-        intakeOut.commandName = "out";
-        intakeOut.subsystemName = "Intake";
-        intakeOut.parameterNames = new String[] {};
-        intakeOut.parameterUnits = new String[] {};
-        commandTemplates.add(intakeOut);
-    }
-
+    public AutonomousCommandTemplate driveDistanceCommand() { return commandTemplates.get("Drive:driveDistance"); }
+    public AutonomousCommandTemplate turnToAngleCommand() { return commandTemplates.get("Drive:turnToAngle"); }
+    public static HashMap<String, AutonomousCommandTemplate> commandTemplates = new HashMap<>();
     public static ArrayList<String> conditionals = new ArrayList<>();
-    static {
-        conditionals.add("leftSwitchOurs");
-        conditionals.add("rightSwitchOurs");
-        conditionals.add("leftScaleOurs");
-        conditionals.add("rightScaleOurs");
-    }
 
     public void addNodesCommands(ArrayList<AutonomousCommand> commands, PathNode node) {
         commands.addAll(node.commands);
@@ -107,17 +127,44 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
             double deltaY = (drive.end.y - drive.beginning.y);
             double distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
             double angle = Math.toDegrees(Math.atan2(deltaY, deltaX));
-            AutonomousCommand driveCommand = new AutonomousCommand(driveDistance);
+            AutonomousCommand driveCommand = new AutonomousCommand(driveDistanceCommand());
             driveCommand.parameterValues[0] = distance;
-            AutonomousCommand turnCommand = new AutonomousCommand(turnToAngle);
+            driveCommand.parameterValues[1] = 4;
+            driveCommand.parameterValues[2] = 1;
+            driveCommand.parameterValues[3] = 1;
+            AutonomousCommand turnCommand = new AutonomousCommand(turnToAngleCommand());
             turnCommand.parameterValues[0] = angle;
+            turnCommand.parameterValues[1] = 2;
+            turnCommand.parameterValues[2] = 1;
+            turnCommand.parameterValues[3] = 10;
             commands.add(driveCommand);
             commands.add(turnCommand);
 
             addNodesCommands(commands, drive.end);
         } else {
             for (Drive outDrive : node.outPaths) {
+                ArrayList<AutonomousCommand> branchCommands = new ArrayList<>();
 
+                double deltaX = (outDrive.end.x - outDrive.beginning.x);
+                double deltaY = (outDrive.end.y - outDrive.beginning.y);
+                double distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                double angle = Math.toDegrees(Math.atan2(deltaY, deltaX));
+                AutonomousCommand driveCommand = new AutonomousCommand(driveDistanceCommand());
+                driveCommand.parameterValues[0] = distance;
+                driveCommand.parameterValues[1] = 4;
+                driveCommand.parameterValues[2] = 1;
+                driveCommand.parameterValues[3] = 1;
+                AutonomousCommand turnCommand = new AutonomousCommand(turnToAngleCommand());
+                turnCommand.parameterValues[0] = angle;
+                turnCommand.parameterValues[1] = 2;
+                turnCommand.parameterValues[2] = 1;
+                turnCommand.parameterValues[3] = 10;
+                branchCommands.add(driveCommand);
+                branchCommands.add(turnCommand);
+
+                addNodesCommands(branchCommands, outDrive.end);
+                AutonomousCommand branch = new AutonomousCommand(outDrive.conditional, branchCommands.toArray(new AutonomousCommand[branchCommands.size()]));
+                commands.add(branch);
             }
         }
     }
@@ -130,22 +177,67 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
         return commands;
     }
 
+    public void addTo(VBox currEditor, AutonomousCommand command) {
+        if(command.commands != null) {
+            VBox commandBlock = new VBox();
+            commandBlock.setPadding(new Insets(10));
+            commandBlock.setBackground(new Background(new BackgroundFill(Color.color(1, 1, 1, 1), new CornerRadii(10), new Insets(5))));
+            commandBlock.setStyle("-fx-border-color : black");
+            commandBlock.prefWidthProperty().bind(currEditor.widthProperty());
+            commandBlock.getChildren().add(new Label("branch: " + command.conditional));
+
+            for (AutonomousCommand branchCommand : command.commands) {
+                addTo(commandBlock, branchCommand);
+            }
+
+            currEditor.getChildren().add(commandBlock);
+        } else {
+            AutonomousCommandTemplate template = commandTemplates.get(command.templateName);
+
+            VBox commandBlock = new VBox();
+            commandBlock.setPadding(new Insets(10));
+            commandBlock.setBackground(new Background(new BackgroundFill(Color.color(1, 1, 1, 1), new CornerRadii(10), new Insets(5))));
+            commandBlock.setStyle("-fx-border-color : black");
+            commandBlock.prefWidthProperty().bind(currEditor.widthProperty());
+            commandBlock.getChildren().add(new Label(template.subsystemName + " -> " + template.commandName));
+
+            for(int i = 0; i < template.parameterNames.length; i++) {
+                String paramText = template.parameterNames[i] + " " + command.parameterValues[i] + " " + template.parameterUnits[i];
+                commandBlock.getChildren().addAll(new Label(paramText));
+            }
+
+            currEditor.getChildren().add(commandBlock);
+        }
+
+    }
+
     public void rebuildEditor() {
         editor.getChildren().clear();
+
+        conditionals.clear();
+        for(String conditional : Main.logicTable.getKeys()) {
+            conditionals.add(conditional);
+        }
+
+        commandTemplates.clear();
+        for(String subsystem : Main.subsystemTable.getSubTables()) {
+            NetworkTable currSubsystemCommandsTable = Main.network.getTable("Custom Dashboard/Subsystem/" + subsystem + "/Commands");
+            for (String key : currSubsystemCommandsTable.getKeys()) {
+                if (key.endsWith("_ParamNames")) {
+                    String commandName = key.replace("_ParamNames", "");
+                    AutonomousCommandTemplate commandTemplate = new AutonomousCommandTemplate();
+                    commandTemplate.commandName = commandName;
+                    commandTemplate.subsystemName = subsystem;
+                    commandTemplate.parameterNames = currSubsystemCommandsTable.getEntry(commandName + "_ParamNames").getStringArray(new String[0]);
+                    commandTemplate.parameterUnits = currSubsystemCommandsTable.getEntry(commandName + "_ParamUnits").getStringArray(new String[0]);
+                    commandTemplates.put(commandTemplate.hashName(), commandTemplate);
+                }
+            }
+        }
+
         if(selected == null) {
             for(AutonomousCommand command : getCommandList()) {
-                VBox commandBlock = new VBox();
-                commandBlock.setPadding(new Insets(10));
-                commandBlock.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
-                commandBlock.prefWidthProperty().bind(editor.widthProperty());
-                commandBlock.getChildren().add(new Label(command.template.subsystemName + " -> " + command.template.commandName));
-
-                for(int i = 0; i < command.template.parameterNames.length; i++) {
-                    String paramText = command.template.parameterNames[i] + " " + command.parameterValues[i] + " " + command.template.parameterUnits[i];
-                    commandBlock.getChildren().addAll(new Label(paramText));
-                }
-
-                editor.getChildren().add(commandBlock);
+                addTo(editor, command);
             }
         } else {
             HBox menu = new HBox();
@@ -154,7 +246,10 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
             Button delete = new Button("Delete");
             delete.setOnAction(evt -> {
                 deleteNodeOuts(selected);
-                if (selected.inPath != null) { pathDrawer.overlay.remove(selected.inPath); }
+                if (selected.inPath != null) {
+                    pathDrawer.overlay.remove(selected.inPath);
+                    selected.inPath.beginning.outPaths.remove(selected.inPath);
+                }
                 if (selected == startingNode) { startingNode = null; }
                 setSelected(null);
                 pathDrawer.overlay.remove(selected);
@@ -164,12 +259,16 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
             for(Drive drive : selected.outPaths) {
                 ComboBox conditional = new ComboBox(FXCollections.observableArrayList(conditionals));
                 conditional.setValue(drive.conditional);
-                //conditional.prefWidthProperty().bind(editor.widthProperty());
                 conditional.setOnAction(evt -> drive.conditional = (String) conditional.getValue());
+                conditional.setOnMouseEntered(evt -> drive.color = Color.PURPLE);
+                conditional.setOnMouseExited(evt -> drive.color = Color.BLUE);
+                //TODO: make this stay highlighted while selecting an option from the dropdown, not just hovering over the box itself
                 editor.getChildren().add(conditional);
             }
 
             for(AutonomousCommand command : selected.commands) {
+                AutonomousCommandTemplate template = commandTemplates.get(command.templateName);
+
                 VBox commandBlock = new VBox();
                 commandBlock.setPadding(new Insets(10));
                 commandBlock.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
@@ -181,10 +280,10 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
                     selected.commands.remove(command);
                     rebuildEditor();
                 });
-                titleRow.getChildren().addAll(new Label(command.template.subsystemName + " -> " + command.template.commandName), deleteBlock);
+                titleRow.getChildren().addAll(new Label(template.subsystemName + " -> " + template.commandName), deleteBlock);
                 commandBlock.getChildren().add(titleRow);
 
-                for(int i = 0; i < command.template.parameterNames.length; i++) {
+                for(int i = 0; i < template.parameterNames.length; i++) {
                     final int index = i;
                     HBox parameterRow = new HBox();
                     TextField parameterField = new TextField(Double.toString(command.parameterValues[i]));
@@ -193,7 +292,7 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
                             command.parameterValues[index] = Double.valueOf(parameterField.getText());
                         } catch (Exception e) { }
                     });
-                    parameterRow.getChildren().addAll(new Label(command.template.parameterNames[i]), parameterField, new Label(command.template.parameterUnits[i]));
+                    parameterRow.getChildren().addAll(new Label(template.parameterNames[i]), parameterField, new Label(template.parameterUnits[i]));
                     commandBlock.getChildren().add(parameterRow);
                 }
 
@@ -205,13 +304,15 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
             addCommand.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
             addCommand.prefWidthProperty().bind(editor.widthProperty());
 
-            for(AutonomousCommandTemplate commandTemplate : commandTemplates) {
-                Button addCommandButton = new Button(commandTemplate.subsystemName + " -> " + commandTemplate.commandName);
-                addCommandButton.setOnAction(evt -> {
-                    selected.commands.add(new AutonomousCommand(commandTemplate));
-                    rebuildEditor();
-                });
-                addCommand.getChildren().add(addCommandButton);
+            for(AutonomousCommandTemplate commandTemplate : commandTemplates.values()) {
+                if(!commandTemplate.subsystemName.equals("Drive")) {
+                    Button addCommandButton = new Button(commandTemplate.subsystemName + " -> " + commandTemplate.commandName);
+                    addCommandButton.setOnAction(evt -> {
+                        selected.commands.add(new AutonomousCommand(commandTemplate));
+                        rebuildEditor();
+                    });
+                    addCommand.getChildren().add(addCommandButton);
+                }
             }
             editor.getChildren().add(addCommand);
         }
@@ -255,16 +356,28 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
         String[] parameterUnits;
         String[] parameterNames;
         String formatString;
+
+        public String hashName() { return subsystemName + ":" + commandName; }
     }
 
     public static class AutonomousCommand {
-        AutonomousCommandTemplate template;
+        String templateName;
         double[] parameterValues;
 
+        String conditional;
+        AutonomousCommand[] commands;
+
+        public AutonomousCommand(String conditional, AutonomousCommand[] commands) {
+            this.conditional = conditional;
+            this.commands = commands;
+        }
+
         public AutonomousCommand(AutonomousCommandTemplate t) {
-            template = t;
+            templateName = t.hashName();
             parameterValues = new double[t.parameterNames.length];
         }
+
+        public AutonomousCommandTemplate getTemplate() { return commandTemplates.get(templateName); }
     }
 
     public class PathNode extends FieldTopdown.Drawable {
@@ -307,16 +420,18 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
         PathNode end;
 
         String conditional;
+        Color color;
 
         public Drive(PathNode b, PathNode e) {
             beginning = b;
             beginning.outPaths.add(this);
             end = e;
             e.inPath = this;
+            color = Color.BLUE;
         }
 
         public void draw(GraphicsContext gc, FieldTopdown field) {
-            gc.setStroke(this == field.hot ? Color.RED : Color.BLUE);
+            gc.setStroke(this == field.hot ? Color.RED : color);
             gc.setLineWidth(4);
             gc.strokeLine(beginning.x, beginning.y, end.x, end.y);
         }

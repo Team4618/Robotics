@@ -5,6 +5,7 @@ import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import com.kauailabs.navx.frc.AHRS;
+import com.sun.javafx.geom.transform.BaseTransform;
 import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 
@@ -22,18 +23,20 @@ public class DriveSubsystem extends Subsystem {
     public class DriveSide {
         public WPI_TalonSRX shepherd;
         public WPI_VictorSPX sheep;
+        public boolean flipDirection;
 
-        public DriveSide(int shepherd_can_id, int sheep_can_id, int enc_A, int enc_B) {
+        public DriveSide(int shepherd_can_id, int sheep_can_id, boolean flipDirection) {
             shepherd = new WPI_TalonSRX(shepherd_can_id);
             sheep = new WPI_VictorSPX(sheep_can_id);
             sheep.follow(shepherd);
             shepherd.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, 0);
+            this.flipDirection = flipDirection;
         }
 
         public void setSetpoint(double setpoint) { shepherd.set(ControlMode.Velocity, setpoint * (1.0 / 10.0) * (1 / DriveSubsystem.feet_per_pulse)); }
-        public double getDistance() { return feet_per_pulse * shepherd.getSensorCollection().getQuadraturePosition(); }
+        public double getDistance() { return (flipDirection ? -1 : 1) * feet_per_pulse * shepherd.getSensorCollection().getQuadraturePosition(); }
         //NOTE: multiply by 10 because it provides in ticks/100ms and we want ticks/sec
-        public double getRate() { return feet_per_pulse * 10 * shepherd.getSensorCollection().getQuadratureVelocity(); }
+        public double getRate() { return (flipDirection ? -1 : 1) * feet_per_pulse * 10 * shepherd.getSensorCollection().getQuadratureVelocity(); }
 
         public void postState(String prefix) {
             PostState(prefix + " Speed", FeetPerSecond, getRate());
@@ -44,16 +47,18 @@ public class DriveSubsystem extends Subsystem {
         }
     }
 
-    public DriveSide left = new DriveSide(4, 57, 0, 1);
-    public DriveSide right = new DriveSide(62, 59, 2, 3);
+    public DriveSide left = new DriveSide(11, 21, true);
+    public DriveSide right = new DriveSide(12, 22, false);
     public DoubleSolenoid shifter = new DoubleSolenoid(0, 1);
     public AHRS navx = new AHRS(SPI.Port.kMXP);
 
     public DifferentialDrive teleopDrive = new DifferentialDrive(left.shepherd, right.shepherd);
 
     public void init() {
+        left.shepherd.setSafetyEnabled(false);
         left.shepherd.setSensorPhase(true);
 
+        right.shepherd.setSafetyEnabled(false);
         right.shepherd.setSensorPhase(true); //NOTE: we have to set this here but not while using software PID because the talon ignores setInverted
         right.shepherd.setInverted(true);
         right.sheep.setInverted(true);
@@ -131,6 +136,23 @@ public class DriveSubsystem extends Subsystem {
         right.shepherd.set(0);
     }
 
+    public double trapazoidalProfile(double elapsedTime, double timeUntilMaxSpeed, double maxSpeed, double distanceTravelled, double distanceSetpoint, double distanceToSlowdown) {
+        double distanceRemaining = distanceSetpoint - distanceTravelled;
+
+        if(distanceRemaining <= distanceToSlowdown) {
+            return lerp(0, distanceRemaining / distanceToSlowdown, maxSpeed);
+        } else if(distanceTravelled > distanceSetpoint) {
+            //TODO
+            return 0;
+        } else if(elapsedTime <= timeUntilMaxSpeed) {
+            return lerp(0, elapsedTime / timeUntilMaxSpeed, maxSpeed);
+        } else if(elapsedTime > timeUntilMaxSpeed) {
+            return maxSpeed;
+        }
+
+        return 0;
+    }
+
     @Command
     public boolean driveDistance(CommandState commandState, @Unit(Feet) double distance, @Unit(FeetPerSecond) double maxSpeed,
                                                             @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Feet) double distanceToSlowdown) {
@@ -175,7 +197,7 @@ public class DriveSubsystem extends Subsystem {
 
     @Command("Turn to %")
     public boolean turnToAngle(CommandState commandState, @Unit(Degrees) double angle, @Unit(FeetPerSecond) double maxSpeed,
-                                                                @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Feet) double angleToSlowdown) {
+                                                                @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Degrees) double angleToSlowdown) {
         if(commandState.init)
             resetPID();
 
