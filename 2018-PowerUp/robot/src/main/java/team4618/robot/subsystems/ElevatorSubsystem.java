@@ -1,14 +1,17 @@
 package team4618.robot.subsystems;
 
+import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
-import edu.wpi.first.wpilibj.Joystick;
+import edu.wpi.first.wpilibj.PIDController;
 import team4618.robot.Subsystem;
 
 import team4618.robot.CommandSequence.CommandState;
 import static team4618.robot.Subsystem.Units.*;
+import static team4618.robot.subsystems.ElevatorSubsystem.Parameters.*;
 
 public class ElevatorSubsystem extends Subsystem {
 
@@ -16,76 +19,71 @@ public class ElevatorSubsystem extends Subsystem {
     public WPI_TalonSRX elevatorShepherd = new WPI_TalonSRX(13);
     public WPI_VictorSPX elevatorSheep1 = new WPI_VictorSPX(14);
     public WPI_VictorSPX elevatorSheep2 = new WPI_VictorSPX(23);
-    public DoubleSolenoid elevatorBrake = new DoubleSolenoid(4, 5);
-
-    public DoubleSolenoid intakeHorizontal = new DoubleSolenoid(2, 3);
-
-    public AnalogInput liftPot = new AnalogInput(0);
-    public WPI_VictorSPX leftLift = new WPI_VictorSPX(33);
-    public WPI_VictorSPX rightLift = new WPI_VictorSPX(24);
-
-    public WPI_VictorSPX leftIntake = new WPI_VictorSPX(15);
-    public WPI_VictorSPX rightIntake = new WPI_VictorSPX(25);
+    public DoubleSolenoid elevatorBrake = new DoubleSolenoid(6, 7);
 
     public void init() {
+        elevatorShepherd.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, 0);
+        elevatorShepherd.configPeakOutputForward(1, 0);
+        elevatorShepherd.configPeakOutputReverse(-1 /*0.35*/, 0);
+
         elevatorSheep1.follow(elevatorShepherd);
         elevatorSheep2.follow(elevatorShepherd);
+
+        elevatorShepherd.setSensorPhase(true);
+        elevatorShepherd.setInverted(true);
+        elevatorSheep1.setInverted(true);
+        elevatorSheep2.setInverted(true);
     }
 
     public void postState() {
-        PostState("Shepherd Current", Unitless, elevatorShepherd.getOutputCurrent());
-        PostState("Lift Pot", Unitless, liftPot.getVoltage());
-        PostState("Raw Position", Unitless, elevatorShepherd.getSensorCollection().getQuadraturePosition());
+        PostState("775 Current", Unitless, elevatorShepherd.getOutputCurrent());
+        PostState("Elevator Setpoint", Unitless, (elevatorShepherd.getControlMode() == ControlMode.Velocity) ? (10 * elevatorShepherd.getClosedLoopTarget(0)) : 0);
+        PostState("Elevator Position", Unitless, elevatorShepherd.getSensorCollection().getQuadraturePosition());
+        PostState("Elevator Speed", Unitless, elevatorShepherd.getSensorCollection().getQuadratureVelocity() * 10);
+        PostState("Elevator Shepherd Power", Percent, elevatorShepherd.getMotorOutputPercent());
+        PostState("Elevator Sheep 1 Power", Percent, elevatorSheep1.getMotorOutputPercent());
+        PostState("Elevator Sheep 2 Power", Percent, elevatorSheep2.getMotorOutputPercent());
     }
 
-    boolean was3Down = false;
-    public boolean intakeUp = true;
-
-    boolean was4Down = false;
-    public boolean intakeOpen = false;
-
-    public void doTeleop(Joystick op) {
-        boolean is3Down = op.getRawButton(3);
-        if(was3Down && !is3Down) {
-            intakeUp = !intakeUp;
-        }
-        was3Down = is3Down;
-
-        boolean is4Down = op.getRawButton(4);
-        if(was4Down && !is4Down) {
-            intakeOpen = !intakeOpen;
-        }
-        was4Down = is4Down;
-
-        if(op.getRawButton(5)) {
-            leftIntake.set(-0.75);
-            rightIntake.set(0.75);
-        } else if(op.getRawButton(1)) {
-            double outSpeed = 1.0; //((-op.getRawAxis(1) + 1) / 2);
-            leftIntake.set(outSpeed);
-            rightIntake.set(-outSpeed);
-        } else {
-            leftIntake.set(0);
-            rightIntake.set(0);
-        }
-
-        intakeHorizontal.set(intakeOpen ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
-
-        elevatorBrake.set(op.getRawButton(8) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
-        if(op.getRawButton(6)) {
-            elevatorShepherd.set(0.60);
-        } else if(op.getRawButton(7)) {
-            elevatorShepherd.set(-0.15);
-        } else {
-            elevatorShepherd.set(0);
-        }
-
-        elevatorShepherd.set(op.getRawAxis(1));
+    @Subsystem.ParameterEnum
+    public enum Parameters {
+        UpElevatorP, UpElevatorI, UpElevatorD, UpElevatorF,
+        DownElevatorP, DownElevatorI, DownElevatorD, DownElevatorF,
+        ElevatorUpSpeed, ElevatorDownSpeed
     }
 
     @Command
-    public boolean goToHeight(CommandState state, @Unit(Feet) double height) {
-        return false;
+    public boolean goToHeight(CommandState state, @Unit(Unitless) double height) {
+        double currHeight = elevatorShepherd.getSensorCollection().getQuadraturePosition();
+        double speed = DriveSubsystem.trapazoidalProfile(state.elapsedTime, 2, value(ElevatorUpSpeed), currHeight, height, 4000, 0);
+        setElevatorSetpoint(speed);
+
+        state.postState("Speed", Unitless, speed);
+        state.postState("Height Travelled", Unitless, currHeight);
+        state.postState("Height Remaining", Unitless, height - currHeight);
+
+        boolean done = Math.abs(height - currHeight) < 1000;
+
+        if(done)
+            setElevatorSetpoint(0);
+
+        return done;
+    }
+
+    public enum ElevatorHeight {
+        Bottom(100), Switch(9900), ScaleLow(21500), ScaleHigh(29000), Climb(28000);
+
+        public double setpoint;
+        ElevatorHeight(double s) { this.setpoint = s; }
+    }
+
+    public void setElevatorSetpoint(double setpoint) {
+        boolean goingUp = setpoint >= 0;
+        elevatorShepherd.config_kP(0, value(goingUp ? UpElevatorP : DownElevatorP), 0);
+        elevatorShepherd.config_kI(0, value(goingUp ? UpElevatorI : DownElevatorI), 0);
+        elevatorShepherd.config_kD(0, value(goingUp ? UpElevatorD : DownElevatorD), 0);
+        elevatorShepherd.config_kF(0, value(goingUp ? UpElevatorF : DownElevatorF), 0);
+        elevatorShepherd.set(ControlMode.Velocity, setpoint * (1.0 / 10.0));
     }
 
     public String name() { return "Elevator"; }

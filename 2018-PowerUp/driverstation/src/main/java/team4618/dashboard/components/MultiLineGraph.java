@@ -14,14 +14,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
-//TODO: make this not trash
 public class MultiLineGraph extends VBox {
     public enum Units { Feet, FeetPerSecond, Degrees, DegreesPerSecond, Seconds, Unitless, Percent }
 
     public static class Entry {
         double value;
-        long time;
-        public Entry(double v, long t) { value = v; time = t; }
+        double time;
+        public Entry(double v, double t) { value = v; time = t; }
     }
 
     public class Graph {
@@ -31,12 +30,52 @@ public class MultiLineGraph extends VBox {
         public Button toggle;
         public boolean enabled = true;
 
+        public double minValue = 0;
+        public double maxValue = 0;
+
         public Graph(Color c, Units u, String name) {
             color = c;
             unit = u;
             toggle = new Button(name);
             toggle.setOnAction(event -> { enabled = !enabled; draw(); });
             toggle.setBackground(new Background(new BackgroundFill(color, new CornerRadii(0), new Insets(0))));
+        }
+
+        public void recalculateRange() {
+            minValue = 0;
+            maxValue = 0;
+
+            for(Entry e : data) {
+                if(inDomain(e)) {
+                    minValue = Math.min(minValue, e.value);
+                    maxValue = Math.max(maxValue, e.value);
+                }
+            }
+        }
+
+        public void add(Entry e) {
+            data.add(e);
+            recalculateRange();
+        }
+    }
+
+    public void recalculateRanges() {
+        double[] mins = new double[Units.values().length];
+        for(int i = 0; i < mins.length; i++) { mins[i] = 0; }
+        double[] maxs = new double[Units.values().length];
+        for(int i = 0; i < maxs.length; i++) { maxs[i] = 0; }
+
+        for(Graph g : graphs.values()) {
+            g.recalculateRange();
+            mins[g.unit.ordinal()] = Math.min(mins[g.unit.ordinal()], g.minValue);
+            maxs[g.unit.ordinal()] = Math.max(maxs[g.unit.ordinal()], g.maxValue);
+        }
+
+        for(Graph g : graphs.values()) {
+            if((g.unit != Units.Percent) && (g.unit != Units.Unitless)) {
+                g.minValue = mins[g.unit.ordinal()];
+                g.maxValue = maxs[g.unit.ordinal()];
+            }
         }
     }
 
@@ -45,18 +84,14 @@ public class MultiLineGraph extends VBox {
     public HBox toggles = new HBox();
     public HashMap<String, Graph> graphs = new HashMap<>();
     Random rng = new Random();
-    public boolean[] drawAxisForUnit = new boolean[Units.values().length];
-    public double[] unitMin = new double[Units.values().length]; //TODO: we probably wanna recalculate the min & max once the old entry fall out of the domain
-    public double[] unitMax = new double[Units.values().length];
 
     public boolean drawMouse = false;
     public double mouseX = 0, mouseY = 0;
 
-    long timeRange = 1000;
+    public double minTime = 0;
+    public double maxTime = 0;
 
-    long minTime = 0;
-    long maxTime = timeRange;
-    long maxEntryTime = 0;
+    boolean automaticMaxTime = true;
 
     public MultiLineGraph() {
         canvas.setWidth(600);
@@ -72,35 +107,29 @@ public class MultiLineGraph extends VBox {
             draw();
         });
 
-        TextField timeRangeBox = new TextField(Long.toString(timeRange));
-        timeRangeBox.setOnAction(event -> {
-            try {
-                timeRange = Long.valueOf(timeRangeBox.getText());
-                maxTime = Math.max(timeRange, maxEntryTime);
-                minTime = maxTime - timeRange;
-                draw();
-            } catch (Exception e) {}
-        });
-        this.getChildren().add(timeRangeBox);
-
         draw();
     }
 
-    public double getY(Units unit, Entry entry) {
-        return getY(unit, entry.value);
+    public static double mapFromTo(double t, double a, double b, double x, double y) {
+        return (x - y) * ((b - t) / (b - a)) + y;
     }
 
-    public double getY(Units unit, double v) {
-        switch (unit) {
+    public double getY(Graph g, double v) {
+        double minY = canvas.getHeight() - 10;
+        double maxY = 10;
+
+        switch (g.unit) {
             case Percent:
-                return canvas.getHeight() / 2 - v * (canvas.getHeight() / 2);
+                return mapFromTo(v, -1, 1, minY, maxY);
+            case Unitless:
+                return mapFromTo(v, g.minValue, g.maxValue, minY, maxY);
             default:
-                return (canvas.getHeight() / 2) - v * (canvas.getHeight() / (unitMax[unit.ordinal()] - unitMin[unit.ordinal()]));
+                return mapFromTo(v, g.minValue, g.maxValue, minY, maxY);
         }
     }
 
     public double getX(Entry entry) {
-        return canvas.getWidth() * (entry.time - minTime) / (maxTime - minTime);
+        return mapFromTo(entry.time, minTime, maxTime, 0, canvas.getWidth()); //canvas.getWidth() * (entry.time - minTime) / (maxTime - minTime);
     }
 
     public boolean inDomain(Entry e) {
@@ -119,24 +148,11 @@ public class MultiLineGraph extends VBox {
                     Entry e2 = g.data.get(i + 1);
 
                     if(inDomain(e1) && inDomain(e2)) {
-                        gc.strokeLine(getX(e1), getY(g.unit, e1), getX(e2), getY(g.unit, e2));
+                        gc.strokeLine(getX(e1), getY(g, e1.value), getX(e2), getY(g, e2.value));
                     }
                 }
             }
         }
-
-        /*
-        gc.setStroke(Color.BLACK);
-        for(Units unit : Units.values()) {
-            if(drawAxisForUnit[unit.ordinal()]) {
-                double maxy = getY(unit, unitMax[unit.ordinal()]);
-                gc.strokeLine(canvas.getWidth() - 10, maxy, canvas.getWidth(), maxy);
-
-                double miny = getY(unit, unitMin[unit.ordinal()]);
-                gc.strokeLine(canvas.getWidth() - 10, miny, canvas.getWidth(), miny);
-            }
-        }
-        */
 
         if(drawMouse) {
             double mouseT = (mouseX / canvas.getWidth()) * (maxTime - minTime) + minTime;
@@ -176,23 +192,25 @@ public class MultiLineGraph extends VBox {
         return 0;
     }
 
-    public void addData(String graphName, Units unit, double data, long time) {
+    public void addData(String graphName, Units unit, double data, double time) {
+        if(graphs.values().size() == 0) {
+            minTime = time;
+            maxTime = minTime;
+        }
+
         if(!graphs.containsKey(graphName)) {
             Graph newGraph = new Graph(Color.color(rng.nextDouble(), rng.nextDouble(), rng.nextDouble()), unit, graphName);
             Platform.runLater(() -> toggles.getChildren().add(newGraph.toggle));
-            drawAxisForUnit[newGraph.unit.ordinal()] = true;
             graphs.put(graphName, newGraph);
         }
 
         Graph graph = graphs.get(graphName);
 
-        unitMax[graph.unit.ordinal()] = Math.max(data, unitMax[graph.unit.ordinal()]);
-        unitMin[graph.unit.ordinal()] = Math.min(data, unitMin[graph.unit.ordinal()]);
+        if(automaticMaxTime) {
+            maxTime = Math.max(time, maxTime);
+        }
 
-        maxEntryTime = Math.max(time, maxEntryTime);
-        maxTime = Math.max(time, maxTime);
-        minTime = maxTime - timeRange;
-
-        graph.data.add(new Entry(data, time));
+        graph.add(new Entry(data, time));
+        recalculateRanges();
     }
 }

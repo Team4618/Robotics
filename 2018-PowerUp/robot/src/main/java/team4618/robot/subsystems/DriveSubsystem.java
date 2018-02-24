@@ -88,8 +88,8 @@ public class DriveSubsystem extends Subsystem {
         right.shepherd.config_kF(0, value(RightF), 0);
     }
 
-    public double sign(double x) { return x / Math.abs(x); }
-    public double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
+    public static double sign(double x) { return x / Math.abs(x); }
+    public static double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
 
     boolean was9Down = false;
     boolean lowGear = false;
@@ -98,6 +98,10 @@ public class DriveSubsystem extends Subsystem {
     //Toggler shifterControl = new Toggler(driver, 9, val -> shifter.set(val ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse));
 
     public void doTeleop(Joystick driver) {
+        //differentialDrive.directDrive(oneStickDrive(power, rotate));
+        //differentialDrive.indirectDrive(oneStickDrive(power, rotate), maxSpeed);
+        //differentialDrive.directDrive(cheesyDrive(power, rotate, quickTurn));
+
         boolean is9Down = driver.getRawButton(9);
         if(was9Down && !is9Down) {
             lowGear = !lowGear;
@@ -123,9 +127,7 @@ public class DriveSubsystem extends Subsystem {
         right.postState("Right");
         PostState("Speed", FeetPerSecond, (-left.getRate() + right.getRate()) / 2.0);
         PostState("Angle", Degrees, navx.getAngle());
-        //PostState("Pitch", Degrees, navx.getPitch());
-        //PostState("Roll", Degrees, navx.getRoll());
-        //PostState("Yaw", Degrees, navx.getYaw());
+        PostState("Roll", Degrees, navx.getRoll());
     }
 
     public void resetPID() {
@@ -136,14 +138,15 @@ public class DriveSubsystem extends Subsystem {
         right.shepherd.set(0);
     }
 
-    public double trapazoidalProfile(double elapsedTime, double timeUntilMaxSpeed, double maxSpeed, double distanceTravelled, double distanceSetpoint, double distanceToSlowdown) {
+    public static double trapazoidalProfile(double elapsedTime, double timeUntilMaxSpeed, double maxSpeed,
+                                            double distanceTravelled, double distanceSetpoint, double distanceToSlowdown,
+                                            double overshootSpeed) {
         double distanceRemaining = distanceSetpoint - distanceTravelled;
 
         if(distanceRemaining <= distanceToSlowdown) {
             return lerp(0, distanceRemaining / distanceToSlowdown, maxSpeed);
         } else if(distanceTravelled > distanceSetpoint) {
-            //TODO
-            return 0;
+            return overshootSpeed;
         } else if(elapsedTime <= timeUntilMaxSpeed) {
             return lerp(0, elapsedTime / timeUntilMaxSpeed, maxSpeed);
         } else if(elapsedTime > timeUntilMaxSpeed) {
@@ -159,26 +162,21 @@ public class DriveSubsystem extends Subsystem {
         if(commandState.init)
             resetPID();
 
-        double curr_distance = (left.getDistance() + right.getDistance()) / 2.0;
-        boolean overshot;
-        if(distance > 0) {
-            overshot = curr_distance > distance;
-        } else {
-            overshot = curr_distance < distance;
-        }
-
-        double speed = sign(distance) * (overshot ? -value(DistanceOvershootSpeed) : lerp(0, Math.min(commandState.elapsedTime / timeUntilMaxSpeed, 1), maxSpeed));
+        double leftDistance = sign(distance) * left.getDistance();
+        double rightDistance = sign(distance) * right.getDistance();
+        double distanceTravelled = (leftDistance + rightDistance) / 2.0;
+        double speed = sign(distance) * trapazoidalProfile(commandState.elapsedTime, timeUntilMaxSpeed, maxSpeed, distanceTravelled, distance, distanceToSlowdown, value(DistanceOvershootSpeed));
         left.setSetpoint(speed);
         right.setSetpoint(speed);
 
         commandState.postState("Speed", FeetPerSecond, speed);
-        commandState.postState("Left Remaining", Feet, left.getDistance() - distance);
-        commandState.postState("Right Remaining", Feet, right.getDistance() - distance);
+        commandState.postState("Left Travelled", Feet, leftDistance);
+        commandState.postState("Right Travelled", Feet, rightDistance);
+        commandState.postState("Left Remaining", Feet, distance - leftDistance);
+        commandState.postState("Right Remaining", Feet, distance - rightDistance);
 
-        boolean left_done = (Math.abs(left.getDistance() - distance) < value(DistanceSlop)) &&
-                (Math.abs(left.getRate()) < value(DistanceRateSlop));
-        boolean right_done = (Math.abs(right.getDistance() - distance) < value(DistanceSlop)) &&
-                (Math.abs(right.getRate()) < value(DistanceRateSlop));
+        boolean left_done = (Math.abs(leftDistance - distance) < value(DistanceSlop)) && (Math.abs(left.getRate()) < value(DistanceRateSlop));
+        boolean right_done = (Math.abs(rightDistance - distance) < value(DistanceSlop)) && (Math.abs(right.getRate()) < value(DistanceRateSlop));
 
         if(left_done && right_done)
             resetPID();

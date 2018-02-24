@@ -16,6 +16,7 @@ public class SubsystemPage extends ScrollPane {
     Compass compass = new Compass();
 
     Main.Subsystem subsystem;
+    long startTime;
 
     public SubsystemPage(Main.Subsystem inSubsystem) {
         subsystem = inSubsystem;
@@ -25,25 +26,33 @@ public class SubsystemPage extends ScrollPane {
         clear_graph.setOnAction(event -> {
             graph.graphs.clear();
             graph.toggles.getChildren().clear();
-            graph.draw();
         });
 
-        content.getChildren().addAll(graph, clear_graph, compass);
+        Button resetGraphMinTime = new Button("Reset Min Time");
+        resetGraphMinTime.setOnAction(event -> {
+            graph.minTime = System.currentTimeMillis() / 1000;
+            graph.maxTime = graph.minTime;
+        });
+
+        content.getChildren().addAll(graph, clear_graph, resetGraphMinTime, compass);
 
         for(String param : subsystem.parameterTable.getKeys()) {
             content.getChildren().add(new ParameterTextbox(subsystem.parameterTable.getEntry(param)));
         }
 
         Main.redrawCallbacks.add(this::onJavafxLoop);
+
+        startTime = System.currentTimeMillis();
     }
 
     public void onJavafxLoop() {
+        double time = (System.currentTimeMillis() - startTime) / 1000.0f;
+
         for(String key : subsystem.stateTable.getKeys()) {
             if(key.endsWith("_Value")) {
                 String state = key.replace("_Value", "");
                 Units unit = Units.valueOf(subsystem.stateTable.getEntry(state + "_Unit").getString(""));
                 double value = subsystem.stateTable.getEntry(state + "_Value").getDouble(0);
-                long time = System.currentTimeMillis() / (1000);
 
                 if (unit == Units.Degrees) {
                     if(state.equals("Angle")){
@@ -56,5 +65,6 @@ public class SubsystemPage extends ScrollPane {
         }
 
         graph.draw();
+        System.out.println("Sampled at " + time);
     }
 }

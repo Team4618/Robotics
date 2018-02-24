@@ -1,6 +1,7 @@
 package team4618.dashboard.pages;
 
 import javafx.scene.layout.VBox;
+import team4618.dashboard.Main;
 import team4618.dashboard.components.MultiLineGraph;
 
 public class RobotPage extends VBox {
@@ -15,11 +16,13 @@ public class RobotPage extends VBox {
         }
 
         for(int i = 0; i < 100; i++) {
-            testGraph.addData("Test2", MultiLineGraph.Units.Unitless, 0.7 * Math.sin(i), i*10);
+            testGraph.addData("Test2", MultiLineGraph.Units.Percent, 0.7 * Math.sin(i), i*10);
         }
 
         for(int i = 0; i < 10; i++) {
-            testGraph.addData("Test3", MultiLineGraph.Units.Degrees, i * 10, 1000);
+            testGraph.addData("Test3", MultiLineGraph.Units.Degrees, i * 10, i);
         }
+
+        Main.redrawCallbacks.add(testGraph::draw);
     }
 }

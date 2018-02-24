@@ -19,6 +19,7 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import team4618.dashboard.components.MultiLineGraph;
 import team4618.dashboard.pages.*;
 
 import java.util.ArrayList;
@@ -81,7 +82,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
     public Timeline redrawTask = new Timeline(new KeyFrame(Duration.millis(33), e -> { for (Runnable r : redrawCallbacks) { r.run(); }} ));
 
     public Rectangle connectionStatus = new Rectangle();
-    public Text connectionName = new Text("No Connection");;
+    public Text connectionName = new Text("No Connection");
 
     public BorderPane root = new BorderPane();
     public VBox menu = new VBox();
