@@ -16,4 +16,10 @@ public class Subsystems {
             s.postState();
         }
     }
+
+    public static void periodic() {
+        for(Subsystem s : subsystems.values()) {
+            s.periodic();
+        }
+    }
 }

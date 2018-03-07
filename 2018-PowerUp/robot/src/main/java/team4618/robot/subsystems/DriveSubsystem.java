@@ -5,7 +5,6 @@ import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import com.kauailabs.navx.frc.AHRS;
-import com.sun.javafx.geom.transform.BaseTransform;
 import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 
@@ -138,6 +137,7 @@ public class DriveSubsystem extends Subsystem {
         right.shepherd.set(0);
     }
 
+    //TODO: fix this, slowdown to distance part breaks with negatives
     public static double trapazoidalProfile(double elapsedTime, double timeUntilMaxSpeed, double maxSpeed,
                                             double distanceTravelled, double distanceSetpoint, double distanceToSlowdown,
                                             double overshootSpeed) {
@@ -165,18 +165,18 @@ public class DriveSubsystem extends Subsystem {
         double leftDistance = sign(distance) * left.getDistance();
         double rightDistance = sign(distance) * right.getDistance();
         double distanceTravelled = (leftDistance + rightDistance) / 2.0;
-        double speed = sign(distance) * trapazoidalProfile(commandState.elapsedTime, timeUntilMaxSpeed, maxSpeed, distanceTravelled, distance, distanceToSlowdown, value(DistanceOvershootSpeed));
+        double speed = sign(distance) * trapazoidalProfile(commandState.elapsedTime, timeUntilMaxSpeed, maxSpeed, distanceTravelled, Math.abs(distance), distanceToSlowdown, value(DistanceOvershootSpeed));
         left.setSetpoint(speed);
         right.setSetpoint(speed);
 
         commandState.postState("Speed", FeetPerSecond, speed);
         commandState.postState("Left Travelled", Feet, leftDistance);
         commandState.postState("Right Travelled", Feet, rightDistance);
-        commandState.postState("Left Remaining", Feet, distance - leftDistance);
-        commandState.postState("Right Remaining", Feet, distance - rightDistance);
+        commandState.postState("Left Remaining", Feet, Math.abs(distance) - leftDistance);
+        commandState.postState("Right Remaining", Feet, Math.abs(distance) - rightDistance);
 
-        boolean left_done = (Math.abs(leftDistance - distance) < value(DistanceSlop)) && (Math.abs(left.getRate()) < value(DistanceRateSlop));
-        boolean right_done = (Math.abs(rightDistance - distance) < value(DistanceSlop)) && (Math.abs(right.getRate()) < value(DistanceRateSlop));
+        boolean left_done = ((Math.abs(distance) - leftDistance) < value(DistanceSlop)) && (Math.abs(left.getRate()) < value(DistanceRateSlop));
+        boolean right_done = ((Math.abs(distance) - rightDistance) < value(DistanceSlop)) && (Math.abs(right.getRate()) < value(DistanceRateSlop));
 
         if(left_done && right_done)
             resetPID();

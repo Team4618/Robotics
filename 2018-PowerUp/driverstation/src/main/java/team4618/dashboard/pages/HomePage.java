@@ -2,6 +2,7 @@ package team4618.dashboard.pages;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Label;
 import javafx.scene.layout.Background;
@@ -12,32 +13,39 @@ import javafx.scene.paint.Color;
 import team4618.dashboard.Main;
 import team4618.dashboard.components.FieldTopdown;
 
-public class HomePage extends VBox implements FieldTopdown.OnClick {
-    FieldTopdown liveFieldView;
-    VBox currentlyExecuting;
+public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
+    VBox node = new VBox();
+    FieldTopdown liveFieldView =  new FieldTopdown(this);
+    VBox currentlyExecuting = new VBox();
 
     RobotPosition currentPosition;
 
     public HomePage() {
-        this.setAlignment(Pos.TOP_CENTER);
+        node.setAlignment(Pos.TOP_CENTER);
 
-        liveFieldView = new FieldTopdown(this);
-        liveFieldView.vboxSizing(this);
+        liveFieldView.vboxSizing(node);
         Main.redrawCallbacks.add(this::updateLiveView);
-        this.getChildren().add(liveFieldView);
+        node.getChildren().add(liveFieldView);
 
-        currentlyExecuting = new VBox();
         currentlyExecuting.setPadding(new Insets(10));
         currentlyExecuting.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
         Main.redrawCallbacks.add(this::rebuildCurrentlyExecuting);
-        this.getChildren().add(currentlyExecuting);
+        node.getChildren().add(currentlyExecuting);
     }
 
+    public void setPageSelected(boolean selected) {
+        FieldTopdown.fieldObjects.forEach(o -> {
+            o.interactable = o instanceof FieldTopdown.StartingPosition;
+            o.draggable = false;
+        });
+    }
+    public Node getNode() { return node; }
     public void onClick(double x, double y) { }
 
     public void onClickStartingLocation(FieldTopdown.StartingPosition pos) {
         liveFieldView.overlay.clear();
         currentPosition = new RobotPosition(pos.x, pos.y, System.currentTimeMillis() / 1000.0);
+        //TODO: bring up "select auto" menu
     }
 
     public class RobotPosition extends FieldTopdown.Drawable {

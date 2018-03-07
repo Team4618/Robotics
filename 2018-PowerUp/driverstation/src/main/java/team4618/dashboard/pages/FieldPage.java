@@ -1,5 +1,6 @@
 package team4618.dashboard.pages;
 
+import javafx.scene.Node;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -7,21 +8,29 @@ import javafx.scene.shape.Rectangle;
 import team4618.dashboard.components.FieldTopdown;
 import team4618.dashboard.components.FieldTopdown.StartingPosition;
 
-public class FieldPage extends VBox {
-    public FieldTopdown field = new FieldTopdown();
+public class FieldPage extends DashboardPage {
+    VBox node = new VBox();
+    FieldTopdown field = new FieldTopdown();
 
-    //TODO: edit field parameters
     public FieldPage() {
-        this.getChildren().add(field);
-        field.widthProperty().bind(this.widthProperty());
+        node.getChildren().add(field);
+        field.widthProperty().bind(node.widthProperty());
 
         FieldTopdown.fieldObjects.add(new StartingPosition(18, 51));
-        FieldTopdown.fieldObjects.add(new StartingPosition(400, 200));
-        //liveFieldView.fieldObjects.add(new StartingPosition(12, 100));
+        FieldTopdown.fieldObjects.add(new StartingPosition(18, 100));
+        FieldTopdown.fieldObjects.add(new StartingPosition(18, 150));
 
         FieldTopdown.fieldObjects.add(new Switch());
-        FieldTopdown.fieldObjects.add(new Switch());
     }
+
+    public void setPageSelected(boolean selected) {
+        FieldTopdown.fieldObjects.forEach(o -> {
+            o.interactable = selected;
+            o.draggable = selected;
+        });
+    }
+
+    public Node getNode() { return node; }
 
     public static class Switch extends FieldTopdown.Drawable {
         double width = 55;

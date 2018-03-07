@@ -4,86 +4,139 @@ import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
-import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
-import edu.wpi.first.wpilibj.PIDController;
 import team4618.robot.Subsystem;
 
 import team4618.robot.CommandSequence.CommandState;
+
+import static team4618.robot.Robot.op;
+import static team4618.robot.Robot.intakeSubsystem;
 import static team4618.robot.Subsystem.Units.*;
 import static team4618.robot.subsystems.ElevatorSubsystem.Parameters.*;
+import static team4618.robot.subsystems.IntakeSubsystem.Parameters.LiftPotHigh;
 
 public class ElevatorSubsystem extends Subsystem {
 
-    //NOTE: shepherd is a 775, sheep are CIMs
-    public WPI_TalonSRX elevatorShepherd = new WPI_TalonSRX(13);
-    public WPI_VictorSPX elevatorSheep1 = new WPI_VictorSPX(14);
-    public WPI_VictorSPX elevatorSheep2 = new WPI_VictorSPX(23);
+    public WPI_TalonSRX shepherd = new WPI_TalonSRX(13);
+    public WPI_VictorSPX sheep = new WPI_VictorSPX(23);
+    public WPI_TalonSRX auxiliary = new WPI_TalonSRX(14); //TODO: change this to a victor on the comp bot
     public DoubleSolenoid elevatorBrake = new DoubleSolenoid(6, 7);
+    public double heightSetpoint = 0;
 
     public void init() {
-        elevatorShepherd.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, 0);
-        elevatorShepherd.configPeakOutputForward(1, 0);
-        elevatorShepherd.configPeakOutputReverse(-1 /*0.35*/, 0);
+        shepherd.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, 0);
+        shepherd.configPeakOutputForward(1, 0);
+        shepherd.configPeakOutputReverse(-1 /*0.35*/, 0);
 
-        elevatorSheep1.follow(elevatorShepherd);
-        elevatorSheep2.follow(elevatorShepherd);
+        sheep.follow(shepherd);
 
-        elevatorShepherd.setSensorPhase(true);
-        elevatorShepherd.setInverted(true);
-        elevatorSheep1.setInverted(true);
-        elevatorSheep2.setInverted(true);
+        shepherd.setSensorPhase(true);
+        shepherd.setInverted(true);
+        auxiliary.setInverted(true);
+        sheep.setInverted(true);
+    }
+
+    public double getSpeed() {
+        return shepherd.getSensorCollection().getQuadratureVelocity() * 10;
     }
 
     public void postState() {
-        PostState("775 Current", Unitless, elevatorShepherd.getOutputCurrent());
-        PostState("Elevator Setpoint", Unitless, (elevatorShepherd.getControlMode() == ControlMode.Velocity) ? (10 * elevatorShepherd.getClosedLoopTarget(0)) : 0);
-        PostState("Elevator Position", Unitless, elevatorShepherd.getSensorCollection().getQuadraturePosition());
-        PostState("Elevator Speed", Unitless, elevatorShepherd.getSensorCollection().getQuadratureVelocity() * 10);
-        PostState("Elevator Shepherd Power", Percent, elevatorShepherd.getMotorOutputPercent());
-        PostState("Elevator Sheep 1 Power", Percent, elevatorSheep1.getMotorOutputPercent());
-        PostState("Elevator Sheep 2 Power", Percent, elevatorSheep2.getMotorOutputPercent());
+        PostState("775 Current", Unitless, auxiliary.getOutputCurrent());
+        PostState("Cim Current", Unitless, shepherd.getOutputCurrent());
+        PostState("Velocity Setpoint", Unitless, (shepherd.getControlMode() == ControlMode.Velocity) ? (10 * shepherd.getClosedLoopTarget(0)) : 0);
+        PostState("Position", Unitless, shepherd.getSensorCollection().getQuadraturePosition());
+        PostState("Speed", Unitless, getSpeed());
+        PostState("Shepherd Power", Percent, shepherd.getMotorOutputPercent());
+        PostState("Sheep Power", Percent, sheep.getMotorOutputPercent());
+        PostState("Auxiliary Power", Percent, auxiliary.getMotorOutputPercent());
     }
 
     @Subsystem.ParameterEnum
     public enum Parameters {
-        UpElevatorP, UpElevatorI, UpElevatorD, UpElevatorF,
-        DownElevatorP, DownElevatorI, DownElevatorD, DownElevatorF,
-        ElevatorUpSpeed, ElevatorDownSpeed
+        UpP, UpI, UpD, UpF,
+        DownP, DownI, DownD, DownF,
+        UpSpeed, DownSpeed, Slop, DistanceToSlowdown,
+        SpeedSlop, AuxiliaryDeadzone
     }
 
     @Command
     public boolean goToHeight(CommandState state, @Unit(Unitless) double height) {
-        double currHeight = elevatorShepherd.getSensorCollection().getQuadraturePosition();
-        double speed = DriveSubsystem.trapazoidalProfile(state.elapsedTime, 2, value(ElevatorUpSpeed), currHeight, height, 4000, 0);
-        setElevatorSetpoint(speed);
-
-        state.postState("Speed", Unitless, speed);
-        state.postState("Height Travelled", Unitless, currHeight);
-        state.postState("Height Remaining", Unitless, height - currHeight);
-
-        boolean done = Math.abs(height - currHeight) < 1000;
-
-        if(done)
-            setElevatorSetpoint(0);
-
-        return done;
+        heightSetpoint = height;
+        return isAt(height) && (Math.abs(getSpeed()) < value(SpeedSlop));
     }
 
-    public enum ElevatorHeight {
-        Bottom(100), Switch(9900), ScaleLow(21500), ScaleHigh(29000), Climb(28000);
-
-        public double setpoint;
-        ElevatorHeight(double s) { this.setpoint = s; }
+    @Command
+    public void setHeight(CommandState state, @Unit(Unitless) double height) {
+        heightSetpoint = height;
     }
 
-    public void setElevatorSetpoint(double setpoint) {
+    @Command
+    public boolean waitForSetpoint(CommandState state) {
+        return isAt(heightSetpoint) && (Math.abs(getSpeed()) < value(SpeedSlop));
+    }
+
+    public boolean isAt(double height) {
+        return Math.abs(getHeight() - height) < value(Slop);
+    }
+
+    public double getHeight() {
+        return shepherd.getSensorCollection().getQuadraturePosition();
+    }
+
+    public void setSpeedSetpoint(double setpoint) {
         boolean goingUp = setpoint >= 0;
-        elevatorShepherd.config_kP(0, value(goingUp ? UpElevatorP : DownElevatorP), 0);
-        elevatorShepherd.config_kI(0, value(goingUp ? UpElevatorI : DownElevatorI), 0);
-        elevatorShepherd.config_kD(0, value(goingUp ? UpElevatorD : DownElevatorD), 0);
-        elevatorShepherd.config_kF(0, value(goingUp ? UpElevatorF : DownElevatorF), 0);
-        elevatorShepherd.set(ControlMode.Velocity, setpoint * (1.0 / 10.0));
+        shepherd.config_kP(0, value(goingUp ? UpP : DownP), 0);
+        shepherd.config_kI(0, value(goingUp ? UpI : DownI), 0);
+        shepherd.config_kD(0, value(goingUp ? UpD : DownD), 0);
+        shepherd.config_kF(0, value(goingUp ? UpF : DownF), 0);
+        shepherd.set(ControlMode.Velocity, setpoint * (1.0 / 10.0));
+    }
+
+    public static double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
+
+    boolean wasAtSetpoint = false;
+    public void periodic() {
+        if(op.getRawButton(1)) {
+            shepherd.set(op.getRawAxis(1));
+            auxiliary.set(op.getRawButton(4) ? op.getRawAxis(1) : 0);
+        } else {
+            double elevatorHeight = getHeight();
+            boolean isAtSetpoint = isAt(heightSetpoint);
+            boolean safe = true; //(elevatorHeight < 9000) || (intakeSubsystem.getLiftPosition() < intakeSubsystem.value(LiftPotHigh));
+            /*
+            boolean stalling = shepherd.getOutputCurrent() > 55; //(Math.abs(shepherd.getMotorOutputPercent()) > 0.8) && (Math.abs(getSpeed()) < 500);
+
+            if(shepherd.getOutputCurrent() > 40)
+                System.out.println("Current " + shepherd.getOutputCurrent());
+
+            if(stalling) {
+                heightSetpoint = getHeight() - 1000;
+                System.out.println("Stalling at: " + heightSetpoint);
+            }
+            */
+
+            /*
+            if(isAtSetpoint && !wasAtSetpoint) {
+                System.out.println("Reset");
+                shepherd.set(0);
+            }
+            */
+
+            if(isAtSetpoint || !safe) {
+                shepherd.configContinuousCurrentLimit(10, 0);
+                setSpeedSetpoint(0);
+            } else {
+                shepherd.configContinuousCurrentLimit(700, 0);
+                double speed = (elevatorHeight > heightSetpoint) ? -value(DownSpeed) : value(UpSpeed);
+
+                if(Math.abs(elevatorHeight - heightSetpoint) <= value(DistanceToSlowdown)) {
+                    speed *= lerp(0.1, Math.abs(elevatorHeight - heightSetpoint) / value(DistanceToSlowdown), 1);
+                }
+
+                setSpeedSetpoint(speed);
+            }
+            wasAtSetpoint = isAtSetpoint;
+        }
     }
 
     public String name() { return "Elevator"; }

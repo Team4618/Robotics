@@ -33,6 +33,9 @@ public class MultiLineGraph extends VBox {
         public double minValue = 0;
         public double maxValue = 0;
 
+        public int startIndex = 0;
+        public int endIndex = 0;
+
         public Graph(Color c, Units u, String name) {
             color = c;
             unit = u;
@@ -42,20 +45,41 @@ public class MultiLineGraph extends VBox {
         }
 
         public void recalculateRange() {
-            minValue = 0;
-            maxValue = 0;
+            minValue = Float.MAX_VALUE;
+            maxValue = Float.MIN_VALUE;
+            startIndex = Integer.MAX_VALUE;
+            endIndex = Integer.MIN_VALUE;
 
-            for(Entry e : data) {
+            for(int i = 0; i < data.size(); i++) {
+                Entry e = data.get(i);
                 if(inDomain(e)) {
                     minValue = Math.min(minValue, e.value);
                     maxValue = Math.max(maxValue, e.value);
+                    startIndex = Math.min(startIndex, i);
+                    endIndex = Math.max(endIndex, i);
                 }
             }
         }
 
+        public double getMinTime() {
+            return data.get(0).time;
+        }
+
+        public double getMaxTime() {
+            return data.get(data.size() - 1).time;
+        }
+
         public void add(Entry e) {
-            data.add(e);
-            recalculateRange();
+            if(data.isEmpty() || (e.time > getMaxTime())) {
+                //TODO: overwrite the last entry if it would've been interpolated from the one before that and this one
+                data.add(e);
+
+                if(automaticMaxTime) {
+                    endIndex = data.size() - 1;
+                    minValue = Math.min(minValue, e.value);
+                    maxValue = Math.max(maxValue, e.value);
+                }
+            }
         }
     }
 
@@ -82,21 +106,24 @@ public class MultiLineGraph extends VBox {
     public Canvas canvas = new Canvas();
     public GraphicsContext gc = canvas.getGraphicsContext2D();
     public HBox toggles = new HBox();
+    public HBox controls = new HBox();
     public HashMap<String, Graph> graphs = new HashMap<>();
     Random rng = new Random();
 
     public boolean drawMouse = false;
     public double mouseX = 0, mouseY = 0;
 
+    public long startTime;
     public double minTime = 0;
     public double maxTime = 0;
 
     boolean automaticMaxTime = true;
 
+    public double dragBeginT = 0;
+
     public MultiLineGraph() {
         canvas.setWidth(600);
         canvas.setHeight(300);
-        this.getChildren().addAll(canvas, toggles);
 
         canvas.setOnMouseEntered(event -> { drawMouse = true; draw(); });
         canvas.setOnMouseExited(event -> { drawMouse = false; draw(); });
@@ -107,7 +134,50 @@ public class MultiLineGraph extends VBox {
             draw();
         });
 
-        draw();
+        canvas.setOnMouseClicked(evt -> {
+            dragBeginT = (evt.getX() / canvas.getWidth()) * (maxTime - minTime) + minTime;
+            System.out.println("Click " + dragBeginT);
+        });
+
+        canvas.setOnMouseDragReleased(evt -> {
+            minTime = dragBeginT;
+            maxTime = (evt.getX() / canvas.getWidth()) * (maxTime - minTime) + minTime;
+            automaticMaxTime = false;
+            recalculateRanges();
+            System.out.println("Released");
+        });
+
+        Button clear_graph = new Button("Clear Graph");
+        clear_graph.setOnAction(event -> {
+            graphs.clear();
+            toggles.getChildren().clear();
+        });
+
+        Button resetGraphMinTime = new Button("Reset Min Time");
+        resetGraphMinTime.setOnAction(event -> {
+            minTime = (System.currentTimeMillis() - startTime) / 1000.0;
+            maxTime = minTime;
+            automaticMaxTime = true;
+            recalculateRanges();
+        });
+
+        Button expandGraphTime = new Button("Full Time");
+        expandGraphTime.setOnAction(event -> {
+            minTime = 0;
+            maxTime = 0;
+            automaticMaxTime = true;
+
+            for(Graph g : graphs.values()) {
+                minTime = Math.min(g.getMinTime(), minTime);
+                maxTime = Math.max(g.getMaxTime(), maxTime);
+            }
+
+            recalculateRanges();
+        });
+        controls.getChildren().addAll(clear_graph, resetGraphMinTime, expandGraphTime);
+        this.getChildren().addAll(canvas, toggles, controls);
+
+        startTime = System.currentTimeMillis();
     }
 
     public static double mapFromTo(double t, double a, double b, double x, double y) {
@@ -141,9 +211,9 @@ public class MultiLineGraph extends VBox {
         gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
 
         for(Graph g : graphs.values()) {
-            if (g.enabled) {
+            if (g.enabled && (g.endIndex > g.startIndex)) {
                 gc.setStroke(g.color);
-                for(int i = 0; i < g.data.size() - 1; i++) {
+                for(int i = g.startIndex; i <= g.endIndex - 1; i++) {
                     Entry e1 = g.data.get(i);
                     Entry e2 = g.data.get(i + 1);
 
@@ -165,7 +235,19 @@ public class MultiLineGraph extends VBox {
                 String unitSuffix = (graph.unit == Units.Unitless) ? "" : (" " + graph.unit.toString());
                 if(graph.unit == Units.Percent) unitSuffix = "%";
 
-                gc.strokeText((graph.enabled ? "+" : "-") + e.getKey() + ": " + getValueAt(graph, mouseT) + unitSuffix, 0, 20 + y_count * 20);
+                double value = 0;
+                for(int i = graph.startIndex; i <= graph.endIndex - 1; i++) {
+                    Entry e1 = graph.data.get(i);
+                    Entry e2 = graph.data.get(i + 1);
+
+                    if(inDomain(e1) && inDomain(e2)) {
+                        if((e1.time <= mouseT) && (mouseT <= e2.time)) {
+                            value = Lerp(e1.value, (mouseT - e1.time) / (e2.time - e1.time), e2.value);
+                        }
+                    }
+                }
+
+                gc.strokeText((graph.enabled ? "+" : "-") + e.getKey() + ": " + value + unitSuffix, 0, 20 + y_count * 20);
                 y_count++;
             }
 
@@ -178,16 +260,7 @@ public class MultiLineGraph extends VBox {
     }
 
     public double getValueAt(Graph g, double t) {
-        for(int i = 0; i < g.data.size() - 1; i++) {
-            Entry e1 = g.data.get(i);
-            Entry e2 = g.data.get(i + 1);
 
-            if(inDomain(e1) && inDomain(e2)) {
-                if((e1.time <= t) && (t <= e2.time)) {
-                    return Lerp(e1.value, (t - e1.time) / (e2.time - e1.time), e2.value);
-                }
-            }
-        }
 
         return 0;
     }
@@ -211,6 +284,5 @@ public class MultiLineGraph extends VBox {
         }
 
         graph.add(new Entry(data, time));
-        recalculateRanges();
     }
 }

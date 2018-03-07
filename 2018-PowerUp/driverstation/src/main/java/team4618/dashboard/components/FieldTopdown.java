@@ -18,6 +18,8 @@ public class FieldTopdown extends Canvas {
     public static final Image field = new Image(ClassLoader.getSystemClassLoader().getResourceAsStream("field.png"));
 
     public static abstract class Drawable {
+        public boolean interactable = true;
+        public boolean draggable = true;
         public double x;
         public double y;
 
@@ -50,8 +52,8 @@ public class FieldTopdown extends Canvas {
             double y = event.getY() / pixelsPerInch;
 
             hot = null;
-            for (Drawable d : fieldObjects) { if(d.contains(x, y)) { hot = d; } }
-            for (Drawable d : overlay) { if(d.contains(x, y)) { hot = d; }  }
+            for (Drawable d : fieldObjects) { if(d.contains(x, y) && d.interactable) { hot = d; } }
+            for (Drawable d : overlay) { if(d.contains(x, y) && d.interactable) { hot = d; }  }
         });
 
         this.setOnMouseReleased(event -> {
@@ -64,8 +66,6 @@ public class FieldTopdown extends Canvas {
             } else if(onClick != null) {
                 onClick.onClick(x, y);
             }
-
-            System.out.println("Field66 " + x + " : " + y);
         });
 
         this.setOnMouseDragged(event -> {
@@ -73,7 +73,7 @@ public class FieldTopdown extends Canvas {
             double x = event.getX() / pixelsPerInch;
             double y = event.getY() / pixelsPerInch;
 
-            if(hot != null) {
+            if((hot != null) && hot.draggable) {
                 hot.drag(x, y);
             }
         });
@@ -112,20 +112,27 @@ public class FieldTopdown extends Canvas {
     }
 
     public static class StartingPosition extends Drawable {
+        Rectangle rect = new Rectangle(-29 / 2, -28 / 2, 29, 28);
         public StartingPosition(double nX, double nY) { x = nX; y = nY; }
 
         public void draw(GraphicsContext gc, FieldTopdown field) {
             gc.setStroke(this == field.hot ? Color.RED : Color.GREEN);
             gc.setLineWidth(2);
-            gc.strokeOval(-8, -8, field.getPixelPerInch() * 16, field.getPixelPerInch() * 16);
+            gc.strokeRect(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
         }
 
         public boolean contains(double nX, double nY) {
-            return Math.sqrt((x - nX) * (x - nX) + (y - nY) * (y - nY)) < 10;
+            return new Rectangle(x + rect.getX(), y + rect.getY(), rect.getWidth(), rect.getHeight()).contains(nX, nY);
         }
 
         public void click(FieldTopdown field) {
-            field.onClick.onClickStartingLocation(this);
+            if(field.onClick != null)
+                field.onClick.onClickStartingLocation(this);
+        }
+
+        public void drag(double nX, double nY) {
+            x = nX;
+            y = nY;
         }
     }
 }

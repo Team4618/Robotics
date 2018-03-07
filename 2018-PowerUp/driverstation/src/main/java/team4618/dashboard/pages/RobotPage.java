@@ -1,15 +1,17 @@
 package team4618.dashboard.pages;
 
+import javafx.scene.Node;
 import javafx.scene.layout.VBox;
 import team4618.dashboard.Main;
 import team4618.dashboard.components.MultiLineGraph;
 
-public class RobotPage extends VBox {
+public class RobotPage extends DashboardPage {
+    VBox node = new VBox();
 
     public RobotPage() {
         MultiLineGraph testGraph = new MultiLineGraph();
-        testGraph.prefWidthProperty().bind(this.widthProperty());
-        this.getChildren().add(testGraph);
+        testGraph.prefWidthProperty().bind(node.widthProperty());
+        node.getChildren().add(testGraph);
 
         for(int i = 0; i < 110; i++) {
             testGraph.addData("Test1", MultiLineGraph.Units.Feet, i * Math.sin(i), i*10);
@@ -25,4 +27,7 @@ public class RobotPage extends VBox {
 
         Main.redrawCallbacks.add(testGraph::draw);
     }
+
+    public void setPageSelected(boolean selected) { }
+    public Node getNode() { return node; }
 }

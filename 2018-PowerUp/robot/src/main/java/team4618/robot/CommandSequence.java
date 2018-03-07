@@ -1,10 +1,14 @@
 package team4618.robot;
 
 import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class CommandSequence {
     public static class CommandState {
@@ -52,6 +56,39 @@ public class CommandSequence {
         }
     }
 
+    @Retention(RetentionPolicy.RUNTIME) public @interface Logic {}
+    public static NetworkTableInstance network;
+    public static NetworkTable table;
+    public static NetworkTable autoTable;
+    public static NetworkTable logicTable;
+    public static NetworkTable teleopTable;
+
+    public static void init(Object logicProvider, String name) {
+        network = NetworkTableInstance.getDefault();
+        table = network.getTable("Custom Dashboard");
+        table.getEntry("name").setValue(name);
+        autoTable = table.getSubTable("Autonomous");
+        logicTable = table.getSubTable("Logic");
+        teleopTable = table.getSubTable("Teleop");
+
+        for(Method logicFunction : logicProvider.getClass().getDeclaredMethods()) {
+            if(logicFunction.isAnnotationPresent(Logic.class)) {
+                logicTable.getEntry(logicFunction.getName()).setString("Unknown");
+            }
+        }
+    }
+
+    public static void resetLogic(Object logicProvider) {
+        for (Method logicFunction : logicProvider.getClass().getDeclaredMethods()) {
+            if (logicFunction.isAnnotationPresent(Logic.class)) {
+                try {
+                    logicTable.getEntry(logicFunction.getName()).setString((Boolean) logicFunction.invoke(logicProvider) ? "True" : "False");
+                } catch (Exception e) { e.printStackTrace(); }
+            }
+        }
+    }
+
+
     ArrayList<Command> commands = new ArrayList<>();
     int currentlyExecuting = 0;
     NetworkTable currentlyExecutingTable;
@@ -63,12 +100,34 @@ public class CommandSequence {
         currentlyExecuting = 0;
     }
 
-    public void addCommand(String subsystemName, String commandName, double[] params) {
+    public void addCommand(String subsystemName, String commandName, double... params) {
         commands.add(new Command(subsystemName, commandName, params));
     }
 
     public boolean isDone() {
         return currentlyExecuting < commands.size();
+    }
+
+    public void loadCommandsFromTable(NetworkTable commandTable) {
+        String[] ordered = commandTable.getSubTables().toArray(new String[0]);
+        Arrays.sort(ordered);
+        boolean choseConditional = false;
+        for (String i : ordered) {
+            NetworkTable currCommandTable = commandTable.getSubTable(i);
+
+            if(currCommandTable.containsKey("Subsystem Name") && currCommandTable.containsKey("Command Name") && currCommandTable.containsKey("Params")) {
+                this.addCommand(currCommandTable.getEntry("Subsystem Name").getString(""),
+                                currCommandTable.getEntry("Command Name").getString(""),
+                                currCommandTable.getEntry("Params").getDoubleArray(new double[0]));
+            } else if(currCommandTable.containsKey("Conditional") && currCommandTable.containsSubTable("Commands") && !choseConditional) {
+                boolean hasCondition = !currCommandTable.getEntry("Conditional").getString("").equals("null");
+                boolean condition = logicTable.getEntry(currCommandTable.getEntry("Conditional").getString("")).getString("").equals("True");
+                if(!hasCondition || condition) {
+                    choseConditional = true;
+                    loadCommandsFromTable(currCommandTable.getSubTable("Commands"));
+                }
+            }
+        }
     }
 
     public void run() {
@@ -79,8 +138,10 @@ public class CommandSequence {
                 if (currentCommand.state == null) {
                     currentCommand.state = new CommandState(currentlyExecutingTable);
 
-                    currentlyExecutingTable.getEntry("Subsystem Name").setString(currentCommand.subsystem.name());
-                    currentlyExecutingTable.getEntry("Command Name").setString(currentCommand.command.getName());
+                    if(currentlyExecutingTable != null) {
+                        currentlyExecutingTable.getEntry("Subsystem Name").setString(currentCommand.subsystem.name());
+                        currentlyExecutingTable.getEntry("Command Name").setString(currentCommand.command.getName());
+                    }
                 }
                 currentCommand.state.update();
 
@@ -91,16 +152,11 @@ public class CommandSequence {
                 }
 
                 Object ret = currentCommand.command.invoke(currentCommand.subsystem, params);
-                if (ret instanceof Boolean) {
-                    if ((Boolean) ret) {
+                if(!(ret instanceof Boolean) || ((Boolean) ret)){
+                    if(currentlyExecutingTable != null) {
                         for (String key : currentlyExecutingTable.getKeys()) {
                             currentlyExecutingTable.getEntry(key).delete();
                         }
-                        currentlyExecuting++;
-                    }
-                } else {
-                    for (String key : currentlyExecutingTable.getKeys()) {
-                        currentlyExecutingTable.getEntry(key).delete();
                     }
                     currentlyExecuting++;
                 }

@@ -2,9 +2,9 @@ package team4618.dashboard.pages;
 
 import edu.wpi.first.networktables.NetworkTable;
 import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
@@ -13,17 +13,13 @@ import javafx.scene.shape.Line;
 import team4618.dashboard.Main;
 import team4618.dashboard.components.FieldTopdown;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
-public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
+public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClick{
+    ScrollPane node = new ScrollPane();
     VBox content = new VBox();
     HBox buttons = new HBox();
     FieldTopdown pathDrawer = new FieldTopdown(this);
@@ -45,63 +41,64 @@ public class AutonomousPage extends ScrollPane implements FieldTopdown.OnClick{
         }
     }
 
-    public void writeCommandsTo(List<AutonomousCommand> commands) {
-            try
-            {
-                FileOutputStream fout = new FileOutputStream ("Filepath.txt");
-                ObjectOutputStream oos = new ObjectOutputStream(fout);
-                oos.writeObject(commands);
-                oos.close();
+    public ArrayList<AutonomousCommand> downloadCommands(String baseTableName) {
+        String[] commandIndicies = Main.network.getTable(baseTableName).getSubTables().toArray(new String[0]);
+        Arrays.sort(commandIndicies);
+        ArrayList<AutonomousCommand> commands = new ArrayList<>();
+        for(String i : commandIndicies) {
+            NetworkTable currCommandTable = Main.network.getTable(baseTableName + "/" + i);
+
+            if(currCommandTable.containsKey("Conditional")) {
+                commands.add(new AutonomousCommand(currCommandTable.getEntry("Conditional").getString(""),
+                                                   downloadCommands(baseTableName + "/" + i + "/commands").toArray(new AutonomousCommand[0])));
+            } else {
+                String templateName = currCommandTable.getEntry("Subsystem Name").getString("") + ":" + currCommandTable.getEntry("Command Name").getString("");
+                AutonomousCommand currCommand = new AutonomousCommand(commandTemplates.get(templateName));
+                currCommand.parameterValues = currCommandTable.getEntry("Params").getDoubleArray(new double[0]);
+                commands.add(currCommand);
             }
-            catch(Exception e) {
-                e.printStackTrace();
-            }
+        }
+        return commands;
     }
 
-    public List<AutonomousCommand> readCommansFrom(List<AutonomousCommand> commands){
-        try {
-            FileInputStream fin = new FileInputStream("Filepath.txt");
-            ObjectInputStream ois = new ObjectInputStream(fin);
-            List<AutonomousCommand> c = (List<AutonomousCommand>) ois.readObject();
-            ois.close();
-            return c;
-        }
-        catch(Exception e)
-        {
-            e.printStackTrace();
-        }
-        return null;
+    public void setPageSelected(boolean selected) {
+        FieldTopdown.fieldObjects.forEach(o -> {
+            o.interactable = o instanceof FieldTopdown.StartingPosition;
+            o.draggable = false;
+        });
+    }
+
+    public void clearTable(String tableName) {
+        NetworkTable table = Main.network.getTable(tableName);
+        table.getKeys().forEach(k -> table.getEntry(k).delete());
+        table.getSubTables().forEach(s -> clearTable(tableName + "/" + s));
     }
 
     public AutonomousPage() {
         Button upload = new Button("Upload");
         upload.setOnAction(evt -> {
-            int i = 0;
-            for(String subTable : Main.mainTable.getSubTables()) {
-                if(subTable.startsWith("Autonomous")) {
-                    i = Math.max(i, Integer.valueOf(subTable.replace("Autonomous", "")));
-                }
-            }
-            uploadCommandsTo(getCommandList(), "Custom Dashboard/Autonomous" + i);
+            clearTable("Custom Dashboard/Autonomous");
+            uploadCommandsTo(getCommandList(), "Custom Dashboard/Autonomous");
         });
         Button download = new Button("Download");
+        download.setOnAction(evt -> {
+            ArrayList<AutonomousCommand> downloadedCommands = downloadCommands("Custom Dashboard/Autonomous");
+        });
         Button openFile = new Button("Open File");
         Button saveFile = new Button("Save File");
         buttons.getChildren().addAll(upload, download, openFile, saveFile);
         buttons.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
         content.getChildren().add(buttons);
 
-        //pathDrawer.overlay.add(new StartingPosition(12, 40));
-        //pathDrawer.overlay.add(new StartingPosition(12, 70));
-        //pathDrawer.overlay.add(new StartingPosition(12, 100));
         pathDrawer.vboxSizing(content);
         editor.prefWidthProperty().bind(content.widthProperty());
         content.getChildren().addAll(pathDrawer, editor);
 
-        content.prefWidthProperty().bind(this.widthProperty());
+        content.prefWidthProperty().bind(node.widthProperty());
         content.setAlignment(Pos.TOP_CENTER);
-        this.setContent(content);
+        node.setContent(content);
     }
+    public Node getNode() { return node; }
 
     public PathNode selected;
     public PathNode startingNode;

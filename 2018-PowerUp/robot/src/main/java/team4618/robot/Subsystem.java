@@ -1,7 +1,6 @@
 package team4618.robot;
 
 import edu.wpi.first.networktables.*;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -10,7 +9,7 @@ import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import static team4618.robot.Robot.network;
+import static team4618.robot.CommandSequence.network;
 
 public abstract class Subsystem implements TableEntryListener {
     @Retention(RetentionPolicy.RUNTIME) public @interface ParameterEnum { }
@@ -20,6 +19,7 @@ public abstract class Subsystem implements TableEntryListener {
 
     public abstract void init();
     public void updateParameters() { }
+    public void periodic() { }
     public abstract void postState();
     public abstract String name();
 
@@ -101,6 +101,5 @@ public abstract class Subsystem implements TableEntryListener {
     public void PostState(String name, Units unit, double value) {
         stateTable.getEntry(name + "_Value").setValue(value);
         stateTable.getEntry(name + "_Unit").setValue(unit.toString());
-        SmartDashboard.putNumber(name, value);
     }
 }

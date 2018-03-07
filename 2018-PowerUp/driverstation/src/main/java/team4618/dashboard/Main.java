@@ -87,6 +87,11 @@ public class Main extends Application implements Consumer<ConnectionNotification
     public BorderPane root = new BorderPane();
     public VBox menu = new VBox();
 
+    HomePage homePage = new HomePage();
+    AutonomousPage autonomousPage = new AutonomousPage();
+    RobotPage robotPage = new RobotPage();
+    FieldPage fieldPage = new FieldPage();
+
     @Override
     public void start(Stage window) {
         network = NetworkTableInstance.getDefault();
@@ -131,27 +136,25 @@ public class Main extends Application implements Consumer<ConnectionNotification
         menu.setPrefWidth(100);
         root.setLeft(menu);
 
-        HomePage homePage = new HomePage();
         addMenuButton("Home", homePage);
-
-        AutonomousPage autonomousPage = new AutonomousPage();
         addMenuButton("Autonomous", autonomousPage);
-
-        RobotPage robotPage = new RobotPage();
         addMenuButton("Robot", robotPage);
-
-        FieldPage fieldPage = new FieldPage();
         addMenuButton("Field", fieldPage);
 
-        root.setCenter(autonomousPage);//homePage);
+        root.setCenter(autonomousPage.getNode());
+        DashboardPage.setSelectedPage(autonomousPage);
+
         redrawTask.setCycleCount(Timeline.INDEFINITE);
         redrawTask.play();
         network.addConnectionListener(this, true);
     }
 
-    public void addMenuButton(String name, Node n) {
+    public void addMenuButton(String name, DashboardPage page) {
         Button robot = new Button(name);
-        robot.setOnAction(event -> root.setCenter(n));
+        robot.setOnAction(event -> {
+            root.setCenter(page.getNode());
+            DashboardPage.setSelectedPage(page);
+        });
         robot.prefWidthProperty().bind(menu.widthProperty());
         menu.getChildren().add(robot);
     }

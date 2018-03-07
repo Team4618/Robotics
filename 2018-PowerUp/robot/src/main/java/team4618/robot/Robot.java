@@ -1,159 +1,123 @@
 package team4618.robot;
 
-import com.ctre.phoenix.motorcontrol.ControlMode;
-import com.ctre.phoenix.motorcontrol.can.TalonSRX;
-import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
-import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
-import edu.wpi.first.networktables.NetworkTable;
-import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.*;
 import team4618.robot.subsystems.DriveSubsystem;
 import team4618.robot.subsystems.ElevatorSubsystem;
 import team4618.robot.subsystems.IntakeSubsystem;
 
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Arrays;
-
-import static team4618.robot.subsystems.DriveSubsystem.Parameters.SpeedLimit;
-import static team4618.robot.subsystems.DriveSubsystem.Parameters.TiltCorrectAngle;
-import static team4618.robot.subsystems.DriveSubsystem.Parameters.TurnLimit;
-import static team4618.robot.subsystems.ElevatorSubsystem.Parameters.*;
+import static team4618.robot.CommandSequence.autoTable;
+import static team4618.robot.CommandSequence.teleopTable;
+import static team4618.robot.subsystems.IntakeSubsystem.Parameters.LiftPotLow;
 
 public class Robot extends TimedRobot {
-    public Joystick driver = new Joystick(0);
-    public Joystick op = new Joystick(1);
+    public static Joystick driver = new Joystick(0);
+    public static Joystick op = new Joystick(1);
 
-    //TODO: move all this into a seperate class
-    public static NetworkTableInstance network;
-    public static NetworkTable table;
-    public static NetworkTable autoTable;
-    public static NetworkTable logicTable;
-
-    DriveSubsystem driveSubsystem = new DriveSubsystem();
-    ElevatorSubsystem elevatorSubsystem = new ElevatorSubsystem();
-    IntakeSubsystem intakeSubsystem = new IntakeSubsystem();
+    public static DriveSubsystem driveSubsystem = new DriveSubsystem();
+    public static ElevatorSubsystem elevatorSubsystem = new ElevatorSubsystem();
+    public static IntakeSubsystem intakeSubsystem = new IntakeSubsystem();
 
     CommandSequence autoProgram;
 
     public void robotInit() {
-        network = NetworkTableInstance.getDefault();
-        table = network.getTable("Custom Dashboard");
-        table.getEntry("name").setValue("Shopping Cart");
-        autoTable = network.getTable("Custom Dashboard/Autonomous");
-        logicTable = network.getTable("Custom Dashboard/Logic");
-        autoProgram = new CommandSequence(network.getTable("Custom Dashboard/Executing"));
+        CommandSequence.init(this, "Shopping Cart");
+        autoProgram = new CommandSequence(CommandSequence.table.getSubTable("Executing"));
         Subsystems.init();
-
-        for(Method logicProvider : this.getClass().getDeclaredMethods()) {
-            if(logicProvider.isAnnotationPresent(Logic.class)) {
-                logicTable.getEntry(logicProvider.getName()).setString("Unknown");
-            }
-        }
     }
 
     public void robotPeriodic() {
         Subsystems.postState();
 
-        if(driver.getRawButton(4)) {
+        if(op.getRawButton(8)) {
             driveSubsystem.navx.reset();
-            elevatorSubsystem.elevatorShepherd.setSelectedSensorPosition(0, 0, 0);
-            elevatorSubsystem.elevatorShepherd.set(0);
-        }
-    }
-
-    public void loadCommandsFromTable(NetworkTable table) {
-        String[] ordered = table.getSubTables().toArray(new String[0]);
-        Arrays.sort(ordered);
-        boolean choseConditional = false;
-        for (String i : ordered) {
-            NetworkTable currCommandTable = table.getSubTable(i);
-
-            if(currCommandTable.containsKey("Subsystem Name") && currCommandTable.containsKey("Command Name") && currCommandTable.containsKey("Params")) {
-                autoProgram.addCommand(currCommandTable.getEntry("Subsystem Name").getString(""),
-                        currCommandTable.getEntry("Command Name").getString(""),
-                        currCommandTable.getEntry("Params").getDoubleArray(new double[0]));
-            } else if(currCommandTable.containsKey("Conditional") && currCommandTable.containsSubTable("Commands") && !choseConditional) {
-                boolean hasCondition = !currCommandTable.getEntry("Conditional").getString("").equals("null");
-                boolean condition = logicTable.getEntry(currCommandTable.getEntry("Conditional").getString("")).getString("").equals("True");
-                if(!hasCondition || condition) {
-                    choseConditional = true;
-                    loadCommandsFromTable(currCommandTable.getSubTable("Commands"));
-                }
-            }
+            elevatorSubsystem.shepherd.setSelectedSensorPosition(0, 0, 0);
+            elevatorSubsystem.shepherd.set(0);
         }
     }
 
     public void autonomousInit() {
-        for(Method logicProvider : this.getClass().getDeclaredMethods()) {
-            if(logicProvider.isAnnotationPresent(Logic.class)) {
-                try {
-                    logicTable.getEntry(logicProvider.getName()).setString((Boolean) logicProvider.invoke(this) ? "True" : "False");
-                } catch (Exception e) { e.printStackTrace(); }
-            }
-        }
-
+        CommandSequence.resetLogic(this);
         autoProgram.reset();
+        autoProgram.loadCommandsFromTable(autoTable);
 
         /*
-        String[] ordered = autoTable.getSubTables().toArray(new String[0]);
-        Arrays.sort(ordered);
-        for (String i : ordered) {
-            NetworkTable table = autoTable.getSubTable(i);
-
-            if(table.containsKey("Subsystem Name") && table.containsKey("Command Name") && table.containsKey("Params")) {
-                autoProgram.addCommand(table.getEntry("Subsystem Name").getString(""),
-                                       table.getEntry("Command Name").getString(""),
-                                       table.getEntry("Params").getDoubleArray(new double[0]));
-            } else if(table.containsKey("Conditional") && table.containsSubTable("Commands")) {
-                boolean hasCondition = !table.getEntry("Conditional").getString("").equals("null");
-                boolean condition = logicTable.getEntry(table.getEntry("Conditional").getString("")).getString("").equals("True");
-                if(!hasCondition || condition) {
-                    loadCommandsFromTable();
-                }
-            }
-        }
+        autoProgram.addCommand("Intake", "openIntake");
+        autoProgram.addCommand("Drive", "driveDistance", 2, 4, 2, 2);
+        autoProgram.addCommand("Intake", "closeIntake");
+        autoProgram.addCommand("Drive", "driveDistance", -8, 4, 2, 2);
+        autoProgram.addCommand("Drive", "turnToAngle", 180, 4, 2, 20);
+        autoProgram.addCommand("Elevator", "goToHeight", 13000);
+        autoProgram.addCommand("Intake", "shoot");
+        autoProgram.addCommand("Elevator", "goToHeight", 0);
         */
-        loadCommandsFromTable(autoTable);
-
-        autoProgram.addCommand("Elevator", "goToHeight", new double[] {ElevatorSubsystem.ElevatorHeight.ScaleLow.setpoint});
 
         /*
-        autoProgram.addCommand("Drive", "driveDistance", new double[] {18, 4, 2, 2});
-        autoProgram.addCommand("Drive", "turnToAngle", new double[] {270, 4, 2, 20});
-        autoProgram.addCommand("Drive", "driveDistance", new double[] {20, 4, 2, 2});
-        autoProgram.addCommand("Drive", "turnToAngle", new double[] {180, 4, 2, 20});
-        autoProgram.addCommand("Drive", "driveDistance", new double[] {14, 4, 2, 2});
-        autoProgram.addCommand("Drive", "turnToAngle", new double[] {90, 4, 2, 20});
-        autoProgram.addCommand("Drive", "driveDistance", new double[] {14, 4, 2, 2});
+        autoProgram.addCommand("Drive", "driveDistance", 12, 8, 1, 4);
+        autoProgram.addCommand("Elevator", "setHeight", 16000);
+        autoProgram.addCommand("Drive", "turnToAngle", 270, 4, 2, 20);
+        autoProgram.addCommand("Drive", "driveDistance", 1.6, 6, 2, 0.5);
+        autoProgram.addCommand("Elevator", "waitForSetpoint");
+        autoProgram.addCommand("Intake", "shoot", 0.35);
+        autoProgram.addCommand("Drive", "turnToAngle", 0, 3, 1.5, 40);
+        autoProgram.addCommand("Elevator", "goToHeight", 0);
         */
+
+        autoProgram.addCommand("Drive", "driveDistance", 108 / 12, 8, 1, 4);
+        autoProgram.addCommand("Elevator", "setHeight", 16000);
+        autoProgram.addCommand("Drive", "turnToAngle", 270 + 45, 2, 2, 20);
+        autoProgram.addCommand("Intake", "shoot", 0.35);
+        autoProgram.addCommand("Drive", "turnToAngle", 0, 2, 2, 20);
+        autoProgram.addCommand("Elevator", "goToHeight", 0);
+        autoProgram.addCommand("Drive", "driveDistance", 4, 8, 1, 4);
+
+        /*
+        autoProgram.addCommand("Elevator", "goToHeight", 29000, 2, 4000);
+        autoProgram.addCommand("Drive", "driveDistance", 18, 4, 2, 2);
+        autoProgram.addCommand("Drive", "turnToAngle", 270, 4, 2, 20);
+        autoProgram.addCommand("Drive", "driveDistance", 20, 4, 2, 2);
+        autoProgram.addCommand("Drive", "turnToAngle", 180, 4, 2, 20);
+        autoProgram.addCommand("Drive", "driveDistance", 14, 4, 2, 2);
+        autoProgram.addCommand("Drive", "turnToAngle", 90, 4, 2, 20);
+        autoProgram.addCommand("Drive", "driveDistance", 14, 4, 2, 2);
+        */
+
+        driveSubsystem.shifter.set(DoubleSolenoid.Value.kReverse);
+        driveSubsystem.left.shepherd.set(0);
+        driveSubsystem.right.shepherd.set(0);
+        intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
     }
 
-    public void autonomousPeriodic() { autoProgram.run(); }
+    public void autonomousPeriodic() {
+        autoProgram.run();
+        Subsystems.periodic();
+    }
 
     enum TeleopState { ClimbUp, ClimbDown, Intake, Shoot, Default }
     TeleopState state;
+    CommandSequence teleopSequence;
 
-    public Button climbButton = new Button(driver, 3);
-    public Button shiftButton = new Button(driver, 9);
+    public Button pullInButton = new Button(driver, 3);
+    public Button shiftButton = new Button(driver, 1);
+    public Button shootFastButton = new Button(driver, 4);
+    public Button shootSlowButton = new Button(driver, 2);
+    public Button upElevatorButton = new Button(driver, 5);
+    public Button downElevatorButton = new Button(driver, 6);
     public double intakeAnalog() { return driver.getRawAxis(2); }
-    public double shootAnalog() { return driver.getRawAxis(3); }
 
     public TeleopState getState() {
+        /*
         if(climbButton.released && (state == TeleopState.ClimbUp)) {
             return TeleopState.ClimbDown;
         } else if(climbButton.released) {
             return TeleopState.ClimbUp;
         } else if(intakeAnalog() > 0.1) {
             return TeleopState.Intake;
-        } else if(shootAnalog() > 0.1) {
+        } else if(shootFastButton.) {
             return TeleopState.Shoot;
         } else if((state == TeleopState.ClimbUp) || (state == TeleopState.ClimbDown)) {
             return state;
         }
+        */
 
         return TeleopState.Default;
     }
@@ -164,97 +128,115 @@ public class Robot extends TimedRobot {
         driveSubsystem.right.shepherd.set(0);
 
         state = TeleopState.Default;
+        teleopSequence = new CommandSequence(teleopTable.getSubTable("Executing"));
 
-        elevatorSubsystem.elevatorShepherd.setSelectedSensorPosition(0, 0, 0);
-        elevatorSubsystem.elevatorShepherd.set(0);
+        elevatorSetpoint = 0;
+        elevatorSubsystem.heightSetpoint = 0;
+        lowGear = false;
+        intakeSubsystem.liftUp = false;
     }
 
+    int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29500 };
+    int elevatorSetpoint = 0;
     boolean lowGear = false;
-
-    public double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
 
     public void teleopPeriodic() {
         Button.tickAll();
+        TeleopState oldState = state;
         state = getState();
+        boolean init = state != oldState;
 
-        if(shiftButton.released) {
-            lowGear = !lowGear;
-        }
+        if(init)
+            teleopSequence.reset();
 
-        intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
-        driveSubsystem.shifter.set(lowGear ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
-        driveSubsystem.teleopDrive.arcadeDrive((lowGear ? 1.0 : 0.85) * driver.getRawAxis(0), -(lowGear ? 0.85 : 0.85) * driver.getRawAxis(1));
-//traps are gay
-        if(op.getRawButton(1)) {
-            //elevatorSubsystem.elevatorShepherd.set(ControlMode.Velocity, 20000 * (1.0 / 10.0));
-            elevatorSubsystem.setElevatorSetpoint(elevatorSubsystem.value(ElevatorUpSpeed));
-        } else if(op.getRawButton(3)) {
-            //elevatorSubsystem.elevatorShepherd.set(ControlMode.Velocity, 0);
-            elevatorSubsystem.setElevatorSetpoint(0);
-        } else if(op.getRawButton(2)) {
-            //elevatorSubsystem.elevatorShepherd.set(ControlMode.Velocity, -2000 * (1.0 / 10.0));
-            elevatorSubsystem.setElevatorSetpoint(-elevatorSubsystem.value(ElevatorDownSpeed));
-        } else {
-            elevatorSubsystem.elevatorShepherd.set(op.getRawAxis(1));
-        }
-        elevatorSubsystem.elevatorBrake.set(driver.getRawButton(1) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+        teleopTable.getEntry("State").setString(state.toString());
 
         /*
-        if(op.getRawButton(1)) {
-            if(elevatorSubsystem.liftController.isEnabled())
-                elevatorSubsystem.liftController.disable();
-
-            System.out.println(elevatorSubsystem.liftController.isEnabled());
-            elevatorSubsystem.leftLift.set(-op.getRawAxis(1));
-            elevatorSubsystem.rightLift.set(op.getRawAxis(1));
-        } else {
-            if(!elevatorSubsystem.liftController.isEnabled()) {
-                elevatorSubsystem.liftController.reset();
-                elevatorSubsystem.liftController.enable();
+        if(state == TeleopState.Intake) {
+            if(init) {
+                teleopSequence.addCommand("Elevator", "goToHeight", 0, 2, 1000);
+                teleopSequence.addCommand("Intake", "down");
             }
 
-            elevatorSubsystem.liftController.setSetpoint(elevatorSubsystem.value(LiftPotUp)); //lerp(elevatorSubsystem.value(LiftPotDown), (1 + driver.getRawAxis(1)) / 2, elevatorSubsystem.value(LiftPotUp)));
-        }
+            if(teleopSequence.isDone()) {
+                intakeSubsystem.leftIntake.set(0.75);
+                intakeSubsystem.rightIntake.set(0.75);
+                intakeSubsystem.arms.set(DoubleSolenoid.Value.kReverse);
+            }
+        } else if(state == TeleopState.Shoot) {
 
-        if(climbButton.released) {
-            elevatorSubsystem.liftController.reset();
-            elevatorSubsystem.liftController.enable();
+            if(intakeSubsystem.getLiftPosition() < intakeSubsystem.value(LiftPotLow)) {
+                intakeSubsystem.leftIntake.set(-5 * shootAnalog());
+                intakeSubsystem.rightIntake.set(-5 * shootAnalog());
+            } else {
+                intakeSubsystem.leftIntake.set(0);
+                intakeSubsystem.rightIntake.set(0);
+            }
+
+            intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+            intakeSubsystem.liftUp = false;
         }
         */
 
+        elevatorSubsystem.elevatorBrake.set(DoubleSolenoid.Value.kReverse);
 
-        if(driver.getRawAxis(2) > 0.1) {
-            intakeSubsystem.leftIntake.set(-5 * driver.getRawAxis(2));
-            intakeSubsystem.rightIntake.set(-5 * driver.getRawAxis(2));
-        } else if(driver.getRawAxis(3) > 0.1) {
+        int oldElevatorSetpoint = elevatorSetpoint;
+        if (upElevatorButton.released && (elevatorSetpoint < (elevatorSetpoints.length - 1))) {
+            elevatorSetpoint++;
+        } else if (downElevatorButton.released && (elevatorSetpoint > 0)) {
+            elevatorSetpoint--;
+        }
+
+        if (shootSlowButton.isDown()) {
+            intakeSubsystem.leftIntake.set(-0.35);
+            intakeSubsystem.rightIntake.set(-0.35);
+            intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+            intakeSubsystem.liftUp = false;
+        } else if (shootFastButton.isDown()) {
+            intakeSubsystem.leftIntake.set(-0.55);
+            intakeSubsystem.rightIntake.set(-0.55);
+            intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+            intakeSubsystem.liftUp = false;
+        } else if(pullInButton.isDown()) {
             intakeSubsystem.leftIntake.set(0.75);
             intakeSubsystem.rightIntake.set(0.75);
+            intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+            intakeSubsystem.liftUp = true;
+        } else if (intakeAnalog() > 0.1) {
+            elevatorSetpoint = 0;
+            intakeSubsystem.leftIntake.set(0.75);
+            intakeSubsystem.rightIntake.set(0.75);
+            intakeSubsystem.arms.set(DoubleSolenoid.Value.kReverse);
+            intakeSubsystem.liftUp = false;
         } else {
             intakeSubsystem.leftIntake.set(0);
             intakeSubsystem.rightIntake.set(0);
+            intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+            intakeSubsystem.liftUp = true;
         }
-        /*
 
-        elevatorSubsystem.intakeHorizontal.set(op.getRawButton(3) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
-        if(op.getRawButton(1)) {
-            elevatorSubsystem.elevatorShepherd.set(op.getRawAxis(1));
-            elevatorSubsystem.leftLift.set(0);
-            elevatorSubsystem.rightLift.set(0);
-        } else {
-            elevatorSubsystem.elevatorShepherd.set(0);
-            elevatorSubsystem.leftLift.set(op.getRawAxis(1));
-            elevatorSubsystem.rightLift.set(-op.getRawAxis(1));
+        if (shiftButton.released) { lowGear = !lowGear; }
+        driveSubsystem.shifter.set(lowGear ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+        driveSubsystem.teleopDrive.arcadeDrive((lowGear ? 1.0 : 0.85) * driver.getRawAxis(0), -(lowGear ? 0.85 : 0.85) * driver.getRawAxis(1));
+
+        if(oldElevatorSetpoint != elevatorSetpoint) {
+            System.out.println("Set " + elevatorSetpoints[elevatorSetpoint]);
+            elevatorSubsystem.heightSetpoint = elevatorSetpoints[elevatorSetpoint];
         }
-        */
+
+        if(elevatorSubsystem.getHeight() > 8000) {
+            intakeSubsystem.liftUp = false;
+        }
+
+        Subsystems.periodic();
+        teleopSequence.run();
     }
 
     public void disabledInit() { }
     public void disabledPeriodic() { }
 
-    @Retention(RetentionPolicy.RUNTIME) public @interface Logic {}
-
-    @Logic public boolean leftSwitchOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(0) == 'L'; }
-    @Logic public boolean rightSwitchOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(0) == 'R'; }
-    @Logic public boolean leftScaleOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(1) == 'L'; }
-    @Logic public boolean rightScaleOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(1) == 'R'; }
+    @CommandSequence.Logic public boolean leftSwitchOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(0) == 'L'; }
+    @CommandSequence.Logic public boolean rightSwitchOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(0) == 'R'; }
+    @CommandSequence.Logic public boolean leftScaleOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(1) == 'L'; }
+    @CommandSequence.Logic public boolean rightScaleOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(1) == 'R'; }
 }
