@@ -94,48 +94,28 @@ public class ElevatorSubsystem extends Subsystem {
 
     public static double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
 
-    boolean wasAtSetpoint = false;
     public void periodic() {
-        if(op.getRawButton(1)) {
-            shepherd.set(op.getRawAxis(1));
-            auxiliary.set(op.getRawButton(4) ? op.getRawAxis(1) : 0);
+        if(getHeight() > 8000) {
+            //TODO: make this set an override flag in the intake subsystem, this takes priority over the state set in teleopPeriodic
+            //intakeSubsystem.liftUp = false;
+        }
+
+        double elevatorHeight = getHeight();
+        boolean isAtSetpoint = isAt(heightSetpoint);
+        boolean safe = true; //(elevatorHeight < 9000) || (intakeSubsystem.getLiftPosition() < intakeSubsystem.value(LiftPotHigh));
+
+        if(isAtSetpoint || !safe) {
+            shepherd.configContinuousCurrentLimit(10, 0);
+            setSpeedSetpoint(0);
         } else {
-            double elevatorHeight = getHeight();
-            boolean isAtSetpoint = isAt(heightSetpoint);
-            boolean safe = true; //(elevatorHeight < 9000) || (intakeSubsystem.getLiftPosition() < intakeSubsystem.value(LiftPotHigh));
-            /*
-            boolean stalling = shepherd.getOutputCurrent() > 55; //(Math.abs(shepherd.getMotorOutputPercent()) > 0.8) && (Math.abs(getSpeed()) < 500);
+            shepherd.configContinuousCurrentLimit(700, 0);
+            double speed = (elevatorHeight > heightSetpoint) ? -value(DownSpeed) : value(UpSpeed);
 
-            if(shepherd.getOutputCurrent() > 40)
-                System.out.println("Current " + shepherd.getOutputCurrent());
-
-            if(stalling) {
-                heightSetpoint = getHeight() - 1000;
-                System.out.println("Stalling at: " + heightSetpoint);
+            if(Math.abs(elevatorHeight - heightSetpoint) <= value(DistanceToSlowdown)) {
+                speed *= lerp(0.1, Math.abs(elevatorHeight - heightSetpoint) / value(DistanceToSlowdown), 1);
             }
-            */
 
-            /*
-            if(isAtSetpoint && !wasAtSetpoint) {
-                System.out.println("Reset");
-                shepherd.set(0);
-            }
-            */
-
-            if(isAtSetpoint || !safe) {
-                shepherd.configContinuousCurrentLimit(10, 0);
-                setSpeedSetpoint(0);
-            } else {
-                shepherd.configContinuousCurrentLimit(700, 0);
-                double speed = (elevatorHeight > heightSetpoint) ? -value(DownSpeed) : value(UpSpeed);
-
-                if(Math.abs(elevatorHeight - heightSetpoint) <= value(DistanceToSlowdown)) {
-                    speed *= lerp(0.1, Math.abs(elevatorHeight - heightSetpoint) / value(DistanceToSlowdown), 1);
-                }
-
-                setSpeedSetpoint(speed);
-            }
-            wasAtSetpoint = isAtSetpoint;
+            setSpeedSetpoint(speed);
         }
     }
 

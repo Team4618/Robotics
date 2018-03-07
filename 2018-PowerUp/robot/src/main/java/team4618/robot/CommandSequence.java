@@ -61,7 +61,6 @@ public class CommandSequence {
     public static NetworkTable table;
     public static NetworkTable autoTable;
     public static NetworkTable logicTable;
-    public static NetworkTable teleopTable;
 
     public static void init(Object logicProvider, String name) {
         network = NetworkTableInstance.getDefault();
@@ -69,7 +68,6 @@ public class CommandSequence {
         table.getEntry("name").setValue(name);
         autoTable = table.getSubTable("Autonomous");
         logicTable = table.getSubTable("Logic");
-        teleopTable = table.getSubTable("Teleop");
 
         for(Method logicFunction : logicProvider.getClass().getDeclaredMethods()) {
             if(logicFunction.isAnnotationPresent(Logic.class)) {

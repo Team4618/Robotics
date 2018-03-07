@@ -123,9 +123,9 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             double deltaX = (drive.end.x - drive.beginning.x);
             double deltaY = (drive.end.y - drive.beginning.y);
             double distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            double angle = Math.toDegrees(Math.atan2(deltaY, deltaX));
+            double angle = Math.toDegrees(Math.atan2(deltaY, deltaX)) - 90;
             AutonomousCommand driveCommand = new AutonomousCommand(driveDistanceCommand());
-            driveCommand.parameterValues[0] = distance;
+            driveCommand.parameterValues[0] = distance / 12.0;
             driveCommand.parameterValues[1] = 4;
             driveCommand.parameterValues[2] = 1;
             driveCommand.parameterValues[3] = 1;
@@ -145,9 +145,9 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 double deltaX = (outDrive.end.x - outDrive.beginning.x);
                 double deltaY = (outDrive.end.y - outDrive.beginning.y);
                 double distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                double angle = Math.toDegrees(Math.atan2(deltaY, deltaX));
+                double angle = Math.toDegrees(Math.atan2(deltaY, deltaX)) - 90;
                 AutonomousCommand driveCommand = new AutonomousCommand(driveDistanceCommand());
-                driveCommand.parameterValues[0] = distance;
+                driveCommand.parameterValues[0] = distance / 12.0;
                 driveCommand.parameterValues[1] = 4;
                 driveCommand.parameterValues[2] = 1;
                 driveCommand.parameterValues[3] = 1;
@@ -212,9 +212,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         editor.getChildren().clear();
 
         conditionals.clear();
-        for(String conditional : Main.logicTable.getKeys()) {
-            conditionals.add(conditional);
-        }
+        conditionals.addAll(Main.logicTable.getKeys());
 
         commandTemplates.clear();
         for(String subsystem : Main.subsystemTable.getSubTables()) {

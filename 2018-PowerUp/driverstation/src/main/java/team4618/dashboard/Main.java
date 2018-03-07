@@ -95,8 +95,8 @@ public class Main extends Application implements Consumer<ConnectionNotification
     @Override
     public void start(Stage window) {
         network = NetworkTableInstance.getDefault();
-        //network.setServerTeam(4618);
-        network.setServer("localhost");
+        network.setServerTeam(4618);
+        //network.setServer("localhost");
         network.startClient();
         mainTable = network.getTable("Custom Dashboard");
         subsystemTable = network.getTable("Custom Dashboard/Subsystem");

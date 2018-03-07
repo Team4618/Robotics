@@ -71,9 +71,7 @@ public class DriveSubsystem extends Subsystem {
     public enum Parameters { LeftP, LeftI, LeftD, LeftF,
                              RightP, RightI, RightD, RightF,
                              TurnSlop, TurnRateSlop, TurnOvershootSpeed,
-                             DistanceSlop, DistanceRateSlop, DistanceOvershootSpeed,
-                             TiltCorrectAngle, MaxTiltCorrectPower,
-                             SpeedLimit, TurnLimit}
+                             DistanceSlop, DistanceRateSlop, DistanceOvershootSpeed }
 
     public void updateParameters() {
         left.shepherd.config_kP(0, value(LeftP), 0);
@@ -90,41 +88,10 @@ public class DriveSubsystem extends Subsystem {
     public static double sign(double x) { return x / Math.abs(x); }
     public static double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
 
-    boolean was9Down = false;
-    boolean lowGear = false;
-
-    //TODO: cleanup the teleop code
-    //Toggler shifterControl = new Toggler(driver, 9, val -> shifter.set(val ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse));
-
-    public void doTeleop(Joystick driver) {
-        //differentialDrive.directDrive(oneStickDrive(power, rotate));
-        //differentialDrive.indirectDrive(oneStickDrive(power, rotate), maxSpeed);
-        //differentialDrive.directDrive(cheesyDrive(power, rotate, quickTurn));
-
-        boolean is9Down = driver.getRawButton(9);
-        if(was9Down && !is9Down) {
-            lowGear = !lowGear;
-        }
-        was9Down = is9Down;
-
-        double multiplier = (lowGear || driver.getRawButton(6)) ? 1.0 : value(SpeedLimit);
-        shifter.set(lowGear ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
-
-        //-10 0.6
-        double drivePower = -multiplier * driver.getRawAxis(1);
-        double roll = navx.getRoll();
-        if(roll > value(TiltCorrectAngle)) {
-            //drivePower += -sign(left.getRate()) * value(MaxTiltCorrectPower);
-            System.out.println("WE GOIN DOWN " + drivePower + " " + left.getRate() + " " + navx.getWorldLinearAccelX());
-        }
-
-        teleopDrive.arcadeDrive(value(TurnLimit) * driver.getRawAxis(0), drivePower);
-    }
-
     public void postState() {
         left.postState("Left");
         right.postState("Right");
-        PostState("Speed", FeetPerSecond, (-left.getRate() + right.getRate()) / 2.0);
+        PostState("Speed", FeetPerSecond, (left.getRate() + right.getRate()) / 2.0);
         PostState("Angle", Degrees, navx.getAngle());
         PostState("Roll", Degrees, navx.getRoll());
     }
@@ -185,9 +152,8 @@ public class DriveSubsystem extends Subsystem {
     }
 
     public double canonicalizeAngle(double rawAngle) {
-        double angle = rawAngle;
-        int revolutions = (int) (angle / 360);
-        double mod360 = (angle - revolutions * 360);
+        int revolutions = (int) (rawAngle / 360);
+        double mod360 = (rawAngle - revolutions * 360);
         return mod360 < 0 ? 360 + mod360 : mod360;
     }
 
@@ -195,17 +161,18 @@ public class DriveSubsystem extends Subsystem {
 
     @Command("Turn to %")
     public boolean turnToAngle(CommandState commandState, @Unit(Degrees) double angle, @Unit(FeetPerSecond) double maxSpeed,
-                                                                @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Degrees) double angleToSlowdown) {
+                                                          @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Degrees) double angleToSlowdown) {
         if(commandState.init)
             resetPID();
 
+        double canonicalized = canonicalizeAngle(angle);
         double curr_angle = getAngle();
-        double remaining_angle = curr_angle - angle;
+        double remaining_angle = curr_angle - canonicalized;
         double left_direction;
-        if (curr_angle > angle) {
-            left_direction = (360 - curr_angle + angle) < (curr_angle - angle) ? 1 : -1;
+        if (curr_angle > canonicalized) {
+            left_direction = (360 - curr_angle + canonicalized) < (curr_angle - canonicalized) ? 1 : -1;
         } else {
-            left_direction = (360 - angle + curr_angle) > (angle - curr_angle) ? 1 : -1;
+            left_direction = (360 - canonicalized + curr_angle) > (canonicalized - curr_angle) ? 1 : -1;
         }
         double speed = lerp(0, Math.min(commandState.elapsedTime / timeUntilMaxSpeed, 1), maxSpeed);
         left.setSetpoint(left_direction * speed);
@@ -219,6 +186,12 @@ public class DriveSubsystem extends Subsystem {
             resetPID();
 
         return turn_done;
+    }
+
+    //TODO: this
+    @Command
+    public boolean driveCurve(CommandState commandState) {
+        return false;
     }
 
     public String name() { return "Drive"; }

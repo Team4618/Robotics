@@ -23,16 +23,12 @@ public class Button {
     }
 
     public void tick() {
-        released = false;
-        if(wasDown && !isDown()) {
-            released = true;
-        }
+        released = wasDown && !isDown();
         wasDown = isDown();
     }
 
-    public static void tickAll() {
-        for(Button b : buttons) {
-            b.tick();
-        }
-    }
+    public void reset() {}
+
+    public static void tickAll() { buttons.forEach(Button::tick); }
+    public static void resetAll() { buttons.forEach(Button::reset); }
 }

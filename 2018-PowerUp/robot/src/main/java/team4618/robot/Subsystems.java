@@ -5,21 +5,13 @@ import java.util.HashMap;
 public class Subsystems {
     public static HashMap<String, Subsystem> subsystems = new HashMap<>();
 
-    public static void init() {
-        for(Subsystem s : subsystems.values()) {
-            s.initSystem();
-        }
-    }
-
-    public static void postState() {
-        for(Subsystem s : subsystems.values()) {
-            s.postState();
-        }
-    }
+    public static void init() { subsystems.values().forEach(Subsystem::init); }
+    public static void postState() { subsystems.values().forEach(Subsystem::postState); }
 
     public static void periodic() {
-        for(Subsystem s : subsystems.values()) {
-            s.periodic();
-        }
+        subsystems.values().forEach(s -> {
+            if(s.periodicEnabled)
+                s.periodic();
+        });
     }
 }

@@ -51,7 +51,7 @@ public class SubsystemPage extends DashboardPage {
             }
         }
 
-        graph.draw();
+        //graph.draw();
         //System.out.println("Sampled at " + time);
     }
 

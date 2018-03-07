@@ -23,6 +23,7 @@ public abstract class Subsystem implements TableEntryListener {
     public abstract void postState();
     public abstract String name();
 
+    public boolean periodicEnabled = true;
     public NetworkTable table;
     public NetworkTable parameterTable;
     public NetworkTable stateTable;
@@ -78,7 +79,7 @@ public abstract class Subsystem implements TableEntryListener {
         if(parameters != null) {
             HashMap<String, Double> paramFile = FileIO.MapFromFile(this);
             for (Enum p : parameters) {
-                Double param = paramFile.containsKey(p.toString()) ? paramFile.get(p.toString()) : 0.0;
+                Double param = paramFile.getOrDefault(p.toString(), 0.0);
                 System.out.println(name() + ":" + p.toString() + " = " + param);
                 parameterTable.getEntry(p.toString()).setValue(param);
             }
