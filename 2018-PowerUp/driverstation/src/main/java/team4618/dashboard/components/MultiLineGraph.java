@@ -40,7 +40,7 @@ public class MultiLineGraph extends VBox {
             color = c;
             unit = u;
             toggle = new Button(name);
-            toggle.setOnAction(event -> { enabled = !enabled; draw(); });
+            toggle.setOnAction(event -> enabled = !enabled);
             toggle.setBackground(new Background(new BackgroundFill(color, new CornerRadii(0), new Insets(0))));
         }
 
@@ -69,10 +69,18 @@ public class MultiLineGraph extends VBox {
             return data.get(data.size() - 1).time;
         }
 
+        public boolean isOnLine(Entry e, Entry a, Entry b) {
+
+            return false;
+        }
+
         public void add(Entry e) {
             if(data.isEmpty() || (e.time > getMaxTime())) {
-                //TODO: overwrite the last entry if it would've been interpolated from the one before that and this one
-                data.add(e);
+                if((data.size() > 1) && isOnLine(data.get(data.size() - 1), data.get(data.size() - 1), e)) {
+                    data.set(data.size() - 1, e);
+                } else {
+                    data.add(e);
+                }
 
                 if(automaticMaxTime) {
                     endIndex = data.size() - 1;
@@ -125,13 +133,12 @@ public class MultiLineGraph extends VBox {
         canvas.setWidth(600);
         canvas.setHeight(300);
 
-        canvas.setOnMouseEntered(event -> { drawMouse = true; draw(); });
-        canvas.setOnMouseExited(event -> { drawMouse = false; draw(); });
+        canvas.setOnMouseEntered(event -> drawMouse = true);
+        canvas.setOnMouseExited(event -> drawMouse = false);
 
         canvas.setOnMouseMoved(event -> {
             mouseX = event.getX();
             mouseY = event.getY();
-            draw();
         });
 
         canvas.setOnMouseClicked(evt -> {

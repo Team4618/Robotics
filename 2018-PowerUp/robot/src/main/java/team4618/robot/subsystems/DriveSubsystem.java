@@ -159,7 +159,7 @@ public class DriveSubsystem extends Subsystem {
 
     public double getAngle() { return canonicalizeAngle(navx.getAngle()); }
 
-    @Command("Turn to %")
+    @Command()
     public boolean turnToAngle(CommandState commandState, @Unit(Degrees) double angle, @Unit(FeetPerSecond) double maxSpeed,
                                                           @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Degrees) double angleToSlowdown) {
         if(commandState.init)

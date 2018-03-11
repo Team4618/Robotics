@@ -61,6 +61,7 @@ public class CommandSequence {
     public static NetworkTable table;
     public static NetworkTable autoTable;
     public static NetworkTable logicTable;
+    public static NetworkTable teleopTable;
 
     public static void init(Object logicProvider, String name) {
         network = NetworkTableInstance.getDefault();
@@ -68,6 +69,7 @@ public class CommandSequence {
         table.getEntry("name").setValue(name);
         autoTable = table.getSubTable("Autonomous");
         logicTable = table.getSubTable("Logic");
+        teleopTable = table.getSubTable("Teleop");
 
         for(Method logicFunction : logicProvider.getClass().getDeclaredMethods()) {
             if(logicFunction.isAnnotationPresent(Logic.class)) {
@@ -107,11 +109,11 @@ public class CommandSequence {
     }
 
     public void loadCommandsFromTable(NetworkTable commandTable) {
-        String[] ordered = commandTable.getSubTables().toArray(new String[0]);
+        int[] ordered = commandTable.getSubTables().stream().mapToInt(Integer::valueOf).toArray();
         Arrays.sort(ordered);
         boolean choseConditional = false;
-        for (String i : ordered) {
-            NetworkTable currCommandTable = commandTable.getSubTable(i);
+        for (int i : ordered) {
+            NetworkTable currCommandTable = commandTable.getSubTable(String.valueOf(i));
 
             if(currCommandTable.containsKey("Subsystem Name") && currCommandTable.containsKey("Command Name") && currCommandTable.containsKey("Params")) {
                 this.addCommand(currCommandTable.getEntry("Subsystem Name").getString(""),

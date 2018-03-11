@@ -9,9 +9,15 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.transform.Affine;
 import javafx.scene.transform.Scale;
 import javafx.stage.Screen;
+import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
+import org.json.simple.parser.JSONParser;
 import team4618.dashboard.Main;
 import team4618.dashboard.pages.AutonomousPage;
 
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 
 public class FieldTopdown extends Canvas {
@@ -32,6 +38,7 @@ public class FieldTopdown extends Canvas {
     public interface OnClick {
         void onClick (double x, double y);
         void onClickStartingLocation(StartingPosition pos);
+        default void setSelected(Drawable selected) {};
     }
 
     OnClick onClick;
@@ -63,6 +70,9 @@ public class FieldTopdown extends Canvas {
 
             if(hot != null) {
                 hot.click(this);
+                if(onClick != null) {
+                    onClick.setSelected(hot);
+                }
             } else if(onClick != null) {
                 onClick.onClick(x, y);
             }
@@ -113,7 +123,20 @@ public class FieldTopdown extends Canvas {
 
     public static class StartingPosition extends Drawable {
         Rectangle rect = new Rectangle(-29 / 2, -28 / 2, 29, 28);
-        public StartingPosition(double nX, double nY) { x = nX; y = nY; }
+        public String name;
+        public StartingPosition(double nX, double nY, String name) {
+            this.name = name;
+            x = nX;
+            y = nY;
+
+            try {
+                FileReader jsonFile = new FileReader(name + "_position.json");
+                JSONObject json = (JSONObject) JSONValue.parseWithException(jsonFile);
+                x = (double) json.get("x");
+                y = (double) json.get("y");
+                jsonFile.close();
+            } catch (Exception e) { e.printStackTrace(); }
+        }
 
         public void draw(GraphicsContext gc, FieldTopdown field) {
             gc.setStroke(this == field.hot ? Color.RED : Color.GREEN);
@@ -128,6 +151,15 @@ public class FieldTopdown extends Canvas {
         public void click(FieldTopdown field) {
             if(field.onClick != null)
                 field.onClick.onClickStartingLocation(this);
+
+            try {
+                JSONObject json = new JSONObject();
+                json.put("x", x);
+                json.put("y", y);
+                FileWriter jsonFile = new FileWriter(name + "_position.json");
+                json.writeJSONString(jsonFile);
+                jsonFile.close();
+            } catch (Exception e) { e.printStackTrace(); }
         }
 
         public void drag(double nX, double nY) {

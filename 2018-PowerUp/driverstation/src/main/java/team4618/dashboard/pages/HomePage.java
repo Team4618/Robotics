@@ -1,31 +1,51 @@
 package team4618.dashboard.pages;
 
+import edu.wpi.first.networktables.EntryListenerFlags;
+import edu.wpi.first.networktables.NetworkTableEntry;
+import edu.wpi.first.networktables.NetworkTableValue;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Label;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
 import team4618.dashboard.Main;
+import team4618.dashboard.autonomous.AutonomousCommand;
+import team4618.dashboard.autonomous.PathNode;
 import team4618.dashboard.components.FieldTopdown;
+
+import java.io.FileReader;
+import java.util.ArrayList;
+import java.util.Iterator;
 
 public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     VBox node = new VBox();
-    FieldTopdown liveFieldView =  new FieldTopdown(this);
+    public static FieldTopdown liveFieldView;
     VBox currentlyExecuting = new VBox();
 
-    RobotPosition currentPosition;
+    public static FieldTopdown.StartingPosition startingPos;
+    public static RobotPosition currentPosition;
 
     public HomePage() {
+        liveFieldView = new FieldTopdown(this);
         node.setAlignment(Pos.TOP_CENTER);
 
         liveFieldView.vboxSizing(node);
         Main.redrawCallbacks.add(this::updateLiveView);
         node.getChildren().add(liveFieldView);
+
+        Main.logicTable.addEntryListener((table, key, entry, value, flags) -> resetAutoView(), EntryListenerFlags.kUpdate | EntryListenerFlags.kLocal | EntryListenerFlags.kNew);
 
         currentlyExecuting.setPadding(new Insets(10));
         currentlyExecuting.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
@@ -42,26 +62,70 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     public Node getNode() { return node; }
     public void onClick(double x, double y) { }
 
+    public static void resetAutoView() {
+        liveFieldView.overlay.removeIf(currDrawable -> !(currDrawable instanceof RobotPosition));
+        if(startingPos != null) {
+            PathNode startingNode = new PathNode(startingPos.x, startingPos.y);
+            liveFieldView.overlay.add(startingNode);
+            AutonomousPage.commandsToPath(AutonomousPage.downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, 0, liveFieldView);
+        }
+    }
+
     public void onClickStartingLocation(FieldTopdown.StartingPosition pos) {
         liveFieldView.overlay.clear();
-        currentPosition = new RobotPosition(pos.x, pos.y, System.currentTimeMillis() / 1000.0);
-        //TODO: bring up "select auto" menu
+        startingPos = pos;
+        currentPosition = new RobotPosition(pos.x, pos.y, System.currentTimeMillis() / 1000.0, 0);
+
+        try {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Open Auto File");
+
+            FileReader reader = new FileReader(fileChooser.showOpenDialog(new Stage()));
+            JSONObject rootObject = (JSONObject) JSONValue.parseWithException(reader);
+            reader.close();
+
+            ArrayList<AutonomousCommand> commandList = new ArrayList<>();
+            ((JSONArray) rootObject.get("Commands")).forEach(j -> commandList.add(new AutonomousCommand((JSONObject) j)));
+
+            FieldTopdown.StartingPosition loadedStartingPos = FieldPage.startingPositions.get(rootObject.get("Starting Position"));
+            if(startingPos == loadedStartingPos) {
+                AutonomousPage.uploadCommands(commandList);
+            } else if(startingPos.name.equals("Left") && loadedStartingPos.name.equals("Right")) {
+                //TODO: make this reflect autos
+
+            } else if(startingPos.name.equals("Right") && loadedStartingPos.name.equals("Left")) {
+                //TODO: make this reflect autos
+
+            } else {
+                Alert errorMessage = new Alert(Alert.AlertType.ERROR);
+                errorMessage.setTitle("Selected Autonomous Not Compatible");
+                errorMessage.setContentText("Starting Position: " + startingPos.name + "\nLoaded Auto: " + loadedStartingPos.name);
+                errorMessage.show();
+            }
+        } catch (Exception e) { e.printStackTrace(); }
     }
 
     public class RobotPosition extends FieldTopdown.Drawable {
         double time;
+        double angle;
 
-        public RobotPosition(double x, double y, double time) {
+        public RobotPosition(double x, double y, double time, double angle) {
             this.x = x;
             this.y = y;
             this.time = time;
-            currentPosition = this;
-            liveFieldView.overlay.add(this);
+            this.angle = angle;
         }
 
+        Rectangle rect = new Rectangle(-29 / 2, -28 / 2, 29, 28);
         public void draw(GraphicsContext gc, FieldTopdown field) {
             gc.setFill((this == currentPosition) ? Color.AZURE : Color.BLUEVIOLET);
             gc.fillOval(-3, -3, field.getPixelPerInch() * 6, field.getPixelPerInch() * 6);
+
+            if(this == currentPosition) {
+                gc.rotate(angle);
+                gc.strokeRect(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+                gc.rotate(-angle);
+            }
         }
 
         public boolean contains(double x, double y) { return false; }
@@ -73,22 +137,30 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
             double angle = Main.subsystems.get("Drive").stateTable.getEntry("Angle_Value").getDouble(0);
             double time = System.currentTimeMillis() / 1000.0;
             double deltat = time - currentPosition.time;
-            System.out.println("Speed " + speed + " Angle " + angle);
-            //System.out.println("Cos(" + angle + ")=" + Math.cos(Math.toRadians(angle)) + " Sin(" + angle + ")=" + Math.sin(Math.toRadians(angle)));
-            new RobotPosition(currentPosition.x + speed * deltat * Math.cos(Math.toRadians(angle)),
-                              currentPosition.y + speed * deltat * Math.sin(Math.toRadians(angle)), time);
+            RobotPosition newPos = new RobotPosition(currentPosition.x + speed * deltat * Math.cos(Math.toRadians(angle)),
+                                                     currentPosition.y + speed * deltat * Math.sin(Math.toRadians(angle)), time, angle);
+            //TODO: set this threshold (currently at 2 inches)
+            /*if(Math.sqrt(Math.pow(currentPosition.x - newPos.x, 2) + Math.pow(currentPosition.y - newPos.y, 2)) < 2)*/ {
+                currentPosition = newPos;
+                liveFieldView.overlay.add(newPos);
+            }
         }
     }
 
     public void rebuildCurrentlyExecuting() {
         currentlyExecuting.getChildren().clear();
 
-        if(Main.currentlyExecutingTable.containsKey("Command Name") && Main.currentlyExecutingTable.containsKey("Subsystem Name")) {
-            currentlyExecuting.getChildren().add(new Label("Currently Executing: " + Main.currentlyExecutingTable.getEntry("Command Name").getString("") + " -> " + Main.currentlyExecutingTable.getEntry("Subsystem Name").getString("")));
-            for (String key : Main.currentlyExecutingTable.getKeys()) {
-                if (key.endsWith("_Value")) {
-                    String stateName = key.replace("_Value", "");
-                    currentlyExecuting.getChildren().add(new Label(stateName + ": " + Main.currentlyExecutingTable.getEntry(stateName + "_Value").getString("") + " " + Main.currentlyExecutingTable.getEntry(stateName + "_Unit").getString("")));
+        String mode = Main.mainTable.getEntry("mode").getString("");
+        if(mode.equals("Teleop")) {
+            //TODO: display teleop data
+        } else if(mode.equals("Autonomous")) {
+            if (Main.currentlyExecutingTable.containsKey("Command Name") && Main.currentlyExecutingTable.containsKey("Subsystem Name")) {
+                currentlyExecuting.getChildren().add(new Label("Currently Executing: " + Main.currentlyExecutingTable.getEntry("Command Name").getString("") + " -> " + Main.currentlyExecutingTable.getEntry("Subsystem Name").getString("")));
+                for (String key : Main.currentlyExecutingTable.getKeys()) {
+                    if (key.endsWith("_Value")) {
+                        String stateName = key.replace("_Value", "");
+                        currentlyExecuting.getChildren().add(new Label(stateName + ": " + Main.currentlyExecutingTable.getEntry(stateName + "_Value").getString("") + " " + Main.currentlyExecutingTable.getEntry(stateName + "_Unit").getString("")));
+                    }
                 }
             }
         }

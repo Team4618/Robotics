@@ -87,16 +87,11 @@ public class Main extends Application implements Consumer<ConnectionNotification
     public BorderPane root = new BorderPane();
     public VBox menu = new VBox();
 
-    HomePage homePage = new HomePage();
-    AutonomousPage autonomousPage = new AutonomousPage();
-    RobotPage robotPage = new RobotPage();
-    FieldPage fieldPage = new FieldPage();
-
     @Override
     public void start(Stage window) {
         network = NetworkTableInstance.getDefault();
-        network.setServerTeam(4618);
-        //network.setServer("localhost");
+        //network.setServerTeam(4618);
+        network.setServer("localhost");
         network.startClient();
         mainTable = network.getTable("Custom Dashboard");
         subsystemTable = network.getTable("Custom Dashboard/Subsystem");
@@ -131,14 +126,20 @@ public class Main extends Application implements Consumer<ConnectionNotification
         connectionName.setFill(Color.WHITE);
         statusBar.getChildren().addAll(connectionStatus, connectionName);
 
-        //TODO: frosted glass effect behind menu pane
         menu.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.1), new CornerRadii(0), new Insets(0))));
         menu.setPrefWidth(100);
         root.setLeft(menu);
 
+        HomePage homePage = new HomePage();
         addMenuButton("Home", homePage);
+
+        AutonomousPage autonomousPage = new AutonomousPage();
         addMenuButton("Autonomous", autonomousPage);
+
+        RobotPage robotPage = new RobotPage();
         addMenuButton("Robot", robotPage);
+
+        FieldPage fieldPage = new FieldPage();
         addMenuButton("Field", fieldPage);
 
         root.setCenter(autonomousPage.getNode());

@@ -9,11 +9,10 @@ import team4618.robot.Subsystem;
 
 import team4618.robot.CommandSequence.CommandState;
 
-import static team4618.robot.Robot.op;
 import static team4618.robot.Robot.intakeSubsystem;
 import static team4618.robot.Subsystem.Units.*;
 import static team4618.robot.subsystems.ElevatorSubsystem.Parameters.*;
-import static team4618.robot.subsystems.IntakeSubsystem.Parameters.LiftPotHigh;
+import static team4618.robot.subsystems.IntakeSubsystem.Parameters.LiftLow;
 
 public class ElevatorSubsystem extends Subsystem {
 
@@ -95,16 +94,10 @@ public class ElevatorSubsystem extends Subsystem {
     public static double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
 
     public void periodic() {
-        if(getHeight() > 8000) {
-            //TODO: make this set an override flag in the intake subsystem, this takes priority over the state set in teleopPeriodic
-            //intakeSubsystem.liftUp = false;
-        }
-
         double elevatorHeight = getHeight();
         boolean isAtSetpoint = isAt(heightSetpoint);
-        boolean safe = true; //(elevatorHeight < 9000) || (intakeSubsystem.getLiftPosition() < intakeSubsystem.value(LiftPotHigh));
 
-        if(isAtSetpoint || !safe) {
+        if(isAtSetpoint) {
             shepherd.configContinuousCurrentLimit(10, 0);
             setSpeedSetpoint(0);
         } else {
