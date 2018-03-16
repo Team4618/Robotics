@@ -14,7 +14,7 @@ public class AutonomousCommandTemplate {
     public String hashName() { return subsystemName + ":" + commandName; }
 
     public static HashMap<String, AutonomousCommandTemplate> templates = new HashMap<>();
-    enum ConditionalState { True, False, Unknown }
+    public enum ConditionalState { True, False, Unknown }
     public static HashMap<String, ConditionalState> conditionals = new HashMap<>();
 
     public static void refreshCommandsAndLogic() {
@@ -22,6 +22,7 @@ public class AutonomousCommandTemplate {
         for(String conditional : Main.logicTable.getKeys()) {
             conditionals.put(conditional, ConditionalState.valueOf(Main.logicTable.getEntry(conditional).getString("Unknown")));
         }
+        conditionals.put("alwaysTrue", ConditionalState.True);
 
         templates.clear();
         for(String subsystem : Main.subsystemTable.getSubTables()) {

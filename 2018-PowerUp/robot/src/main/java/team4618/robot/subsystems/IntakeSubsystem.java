@@ -35,13 +35,14 @@ public class IntakeSubsystem extends Subsystem {
     }
 
     public void postState() {
-        PostState("Lift Encoder", Unitless, liftEncoder.get());
+        PostState("Lift Raw Encoder", Unitless, liftEncoder.get());
+        PostState("Lift Position", Unitless, getLiftPosition());
         PostState("Lift Power", Percent, leftLift.getMotorOutputPercent());
         PostState("Cube Sensor", Percent, cubeSensor.get() ? 1 : 0);
     }
 
     public double getLiftPosition() {
-        return liftEncoder.get();
+        return liftEncoder.get() + (-156);
     }
 
     public void setLiftPower(double value) {
@@ -90,27 +91,43 @@ public class IntakeSubsystem extends Subsystem {
     boolean wasUp = false;
     double startTime = 0;
 
+    public boolean liftSittingDown = false;
+    boolean liftLatched = false;
+
     public void periodic() {
         double liftPosition = getLiftPosition();
         if(liftUp) {
             if(liftPosition < value(LiftHigh)) {
-                setLiftPower(0);
-                latch.set(DoubleSolenoid.Value.kForward);
-            } else {
-                setLiftPower(value(LiftUpPower));
-                latch.set(DoubleSolenoid.Value.kForward);
+                liftLatched = true;
             }
+
+            latch.set(DoubleSolenoid.Value.kForward);
+            setLiftPower(liftLatched ? 0 : value(LiftUpPower));
         } else {
             if(liftPosition > value(LiftLow)) {
                 setLiftPower(0);
-                latch.set(DoubleSolenoid.Value.kForward);
+                liftSittingDown = true;
             } else {
-                latch.set(DoubleSolenoid.Value.kReverse);
                 setLiftPower((Timer.getFPGATimestamp() - startTime < value(LiftReleaseLatchTime)) ? value(LiftReleaseLatchPower) : value(LiftDescentPower));
             }
+
+            latch.set(liftSittingDown ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+        }
+
+        /*
+        if(liftPosition < value(LiftLow)) {
+            liftLatched = false;
+        }
+        */
+
+        if(liftPosition < value(LiftHigh)) {
+            liftSittingDown = false;
         }
 
         if(wasUp != liftUp) {
+            if(liftUp)
+                liftLatched = false;
+
             startTime = Timer.getFPGATimestamp();
             System.out.println("Changing state");
         }

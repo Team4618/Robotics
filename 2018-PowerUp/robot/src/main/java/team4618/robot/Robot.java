@@ -51,10 +51,14 @@ public class Robot extends TimedRobot {
         driveSubsystem.left.shepherd.set(0);
         driveSubsystem.right.shepherd.set(0);
         intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+        intakeSubsystem.liftUp = false;
+        elevatorSubsystem.heightSetpoint = 0;
 
-        for(CommandSequence.Command command : autoProgram.commands) {
-            System.out.println(command.command.getName());
-        }
+        driveSubsystem.navx.reset();
+        elevatorSubsystem.shepherd.setSelectedSensorPosition(0, 0, 0);
+        elevatorSubsystem.shepherd.set(0);
+
+        intakeSubsystem.liftEncoder.reset();
     }
 
     public void autonomousPeriodic() {
@@ -63,7 +67,7 @@ public class Robot extends TimedRobot {
     }
 
     public void setIntakeState(double intakePower, boolean armsOpen, boolean liftUp) {
-        intakeSubsystem.setIntakePower((intakeSubsystem.getLiftPosition() >= intakeSubsystem.value(LiftLow)) || liftUp ? intakePower : 0);
+        intakeSubsystem.setIntakePower(intakeSubsystem.liftSittingDown || liftUp ? intakePower : 0);
         intakeSubsystem.arms.set(armsOpen ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
         intakeSubsystem.liftUp = liftUp;
     }
@@ -100,6 +104,7 @@ public class Robot extends TimedRobot {
     boolean driveForClimb = false;
     boolean elevatorUpForClimb = false;
     double climbStartTime;
+    boolean intakeHasCube = false;
     CommandSequence.CommandState driveForClimbCommandState;
 
     public void teleopPeriodic() {
@@ -122,8 +127,12 @@ public class Robot extends TimedRobot {
                 setIntakeState(0.75, false, true);
             } else if (intakeAnalog() > 0.1) {
                 elevatorSetpoint = 0;
-                setIntakeState(intakeSubsystem.hasCube() ? 0 : 0.75, true, false);
+                if(intakeSubsystem.hasCube()) {
+                    intakeHasCube = true;
+                }
+                setIntakeState(intakeHasCube ? 0 : 0.75, !intakeHasCube, false);
             } else {
+                intakeHasCube = false;
                 setIntakeState(0, false, true);
             }
 

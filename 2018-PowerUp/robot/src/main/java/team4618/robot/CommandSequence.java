@@ -119,12 +119,12 @@ public class CommandSequence {
                 this.addCommand(currCommandTable.getEntry("Subsystem Name").getString(""),
                                 currCommandTable.getEntry("Command Name").getString(""),
                                 currCommandTable.getEntry("Params").getDoubleArray(new double[0]));
-            } else if(currCommandTable.containsKey("Conditional") && currCommandTable.containsSubTable("Commands") && !choseConditional) {
-                boolean hasCondition = !currCommandTable.getEntry("Conditional").getString("").equals("null");
+            } else if(currCommandTable.containsKey("Conditional") && currCommandTable.containsSubTable("commands") && !choseConditional) {
                 boolean condition = logicTable.getEntry(currCommandTable.getEntry("Conditional").getString("")).getString("").equals("True");
-                if(!hasCondition || condition) {
+                System.out.println(currCommandTable.getEntry("Conditional").getString("") + " " + condition);
+                if(condition) {
                     choseConditional = true;
-                    loadCommandsFromTable(currCommandTable.getSubTable("Commands"));
+                    loadCommandsFromTable(currCommandTable.getSubTable("commands"));
                 }
             }
         }

@@ -14,6 +14,7 @@ import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -22,6 +23,7 @@ import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
 import team4618.dashboard.Main;
 import team4618.dashboard.autonomous.AutonomousCommand;
+import team4618.dashboard.autonomous.AutonomousCommandTemplate;
 import team4618.dashboard.autonomous.PathNode;
 import team4618.dashboard.components.FieldTopdown;
 
@@ -64,11 +66,21 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
 
     public static void resetAutoView() {
         liveFieldView.overlay.removeIf(currDrawable -> !(currDrawable instanceof RobotPosition));
+        AutonomousCommandTemplate.refreshCommandsAndLogic();
         if(startingPos != null) {
             PathNode startingNode = new PathNode(startingPos.x, startingPos.y);
             liveFieldView.overlay.add(startingNode);
             AutonomousPage.commandsToPath(AutonomousPage.downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, 0, liveFieldView);
+            AutonomousPage.propagateAndDash(startingNode, true);
+            liveFieldView.overlay.forEach(x -> x.interactable = false);
         }
+    }
+
+    public static void errorMessage(String title, String text) {
+        Alert errorMessage = new Alert(Alert.AlertType.ERROR);
+        errorMessage.setTitle(title);
+        errorMessage.setContentText(text);
+        errorMessage.show();
     }
 
     public void onClickStartingLocation(FieldTopdown.StartingPosition pos) {
@@ -90,17 +102,9 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
             FieldTopdown.StartingPosition loadedStartingPos = FieldPage.startingPositions.get(rootObject.get("Starting Position"));
             if(startingPos == loadedStartingPos) {
                 AutonomousPage.uploadCommands(commandList);
-            } else if(startingPos.name.equals("Left") && loadedStartingPos.name.equals("Right")) {
-                //TODO: make this reflect autos
-
-            } else if(startingPos.name.equals("Right") && loadedStartingPos.name.equals("Left")) {
-                //TODO: make this reflect autos
-
             } else {
-                Alert errorMessage = new Alert(Alert.AlertType.ERROR);
-                errorMessage.setTitle("Selected Autonomous Not Compatible");
-                errorMessage.setContentText("Starting Position: " + startingPos.name + "\nLoaded Auto: " + loadedStartingPos.name);
-                errorMessage.show();
+                errorMessage("Selected Autonomous Not Compatible",
+                        "Starting Position: " + startingPos.name + "\nLoaded Auto: " + loadedStartingPos.name);
             }
         } catch (Exception e) { e.printStackTrace(); }
     }
@@ -123,7 +127,10 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
 
             if(this == currentPosition) {
                 gc.rotate(angle);
-                gc.strokeRect(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+                Paint prevFill = gc.getFill();
+                gc.setFill(Color.rgb(0, 0, 0, 0.5));
+                gc.fillRect(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+                gc.setFill(prevFill);
                 gc.rotate(-angle);
             }
         }
@@ -152,7 +159,10 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
 
         String mode = Main.mainTable.getEntry("mode").getString("");
         if(mode.equals("Teleop")) {
-            //TODO: display teleop data
+            //TODO: improve this
+            for(String key : Main.teleopTable.getKeys()) {
+                currentlyExecuting.getChildren().add(new Label(key + ": " + Main.teleopTable.getEntry(key).getString("")));
+            }
         } else if(mode.equals("Autonomous")) {
             if (Main.currentlyExecutingTable.containsKey("Command Name") && Main.currentlyExecutingTable.containsKey("Subsystem Name")) {
                 currentlyExecuting.getChildren().add(new Label("Currently Executing: " + Main.currentlyExecutingTable.getEntry("Command Name").getString("") + " -> " + Main.currentlyExecutingTable.getEntry("Subsystem Name").getString("")));

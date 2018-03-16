@@ -37,6 +37,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
     public static NetworkTable autoTable;
     public static NetworkTable currentlyExecutingTable;
     public static NetworkTable logicTable;
+    public static NetworkTable teleopTable;
 
     public static class Subsystem {
         public static class CommandParam { public String name; public String unit; }
@@ -90,14 +91,15 @@ public class Main extends Application implements Consumer<ConnectionNotification
     @Override
     public void start(Stage window) {
         network = NetworkTableInstance.getDefault();
-        //network.setServerTeam(4618);
-        network.setServer("localhost");
+        network.setServerTeam(4618);
+        //network.setServer("localhost");
         network.startClient();
         mainTable = network.getTable("Custom Dashboard");
         subsystemTable = network.getTable("Custom Dashboard/Subsystem");
         autoTable = network.getTable("Custom Dashboard/Autonomous");
         currentlyExecutingTable = network.getTable("Custom Dashboard/Executing");
         logicTable = network.getTable("Custom Dashboard/Logic");
+        teleopTable = network.getTable("Custom Dashboard/Teleop");
 
         Image logo = new Image(ClassLoader.getSystemClassLoader().getResourceAsStream("logo.png"));
         BackgroundImage[] backgrounds = new BackgroundImage[2];

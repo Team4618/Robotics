@@ -43,6 +43,7 @@ public class DriveSubsystem extends Subsystem {
             PostState(prefix + " Raw Position", Unitless, shepherd.getSensorCollection().getQuadraturePosition());
             PostState(prefix + " Setpoint", FeetPerSecond, (shepherd.getControlMode() == ControlMode.Velocity) ? (feet_per_pulse * 10 * shepherd.getClosedLoopTarget(0)) : 0);
             PostState(prefix + " Power", Percent, shepherd.getMotorOutputPercent());
+            PostState(prefix + " Current", Percent, shepherd.getOutputCurrent());
         }
     }
 
@@ -123,18 +124,23 @@ public class DriveSubsystem extends Subsystem {
         return 0;
     }
 
+    double startDriveAngle = 0;
+
     @Command
     public boolean driveDistance(CommandState commandState, @Unit(Feet) double distance, @Unit(FeetPerSecond) double maxSpeed,
                                                             @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Feet) double distanceToSlowdown) {
-        if(commandState.init)
+        if(commandState.init) {
             resetPID();
+            startDriveAngle = navx.getAngle();
+        }
 
+        double currAngle = navx.getAngle();
         double leftDistance = sign(distance) * left.getDistance();
         double rightDistance = sign(distance) * right.getDistance();
         double distanceTravelled = (leftDistance + rightDistance) / 2.0;
         double speed = sign(distance) * trapazoidalProfile(commandState.elapsedTime, timeUntilMaxSpeed, maxSpeed, distanceTravelled, Math.abs(distance), distanceToSlowdown, value(DistanceOvershootSpeed));
-        left.setSetpoint(speed);
-        right.setSetpoint(speed);
+        left.setSetpoint(speed + ((startDriveAngle - currAngle > 2) ? 2 : 0));
+        right.setSetpoint(speed + ((startDriveAngle - currAngle < -2) ? 2 : 0));
 
         commandState.postState("Speed", FeetPerSecond, speed);
         commandState.postState("Left Travelled", Feet, leftDistance);
@@ -142,13 +148,15 @@ public class DriveSubsystem extends Subsystem {
         commandState.postState("Left Remaining", Feet, Math.abs(distance) - leftDistance);
         commandState.postState("Right Remaining", Feet, Math.abs(distance) - rightDistance);
 
+        boolean stalled = (left.shepherd.getOutputCurrent() > 40) && (right.shepherd.getOutputCurrent() > 40);
         boolean left_done = ((Math.abs(distance) - leftDistance) < value(DistanceSlop)) && (Math.abs(left.getRate()) < value(DistanceRateSlop));
         boolean right_done = ((Math.abs(distance) - rightDistance) < value(DistanceSlop)) && (Math.abs(right.getRate()) < value(DistanceRateSlop));
+        boolean done = (left_done && right_done) || stalled;
 
-        if(left_done && right_done)
+        if(done)
             resetPID();
 
-        return left_done && right_done;
+        return done;
     }
 
     public double canonicalizeAngle(double rawAngle) {

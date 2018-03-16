@@ -21,6 +21,7 @@ import team4618.dashboard.autonomous.Drive;
 import team4618.dashboard.autonomous.PathNode;
 import team4618.dashboard.components.FieldTopdown;
 
+import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -38,6 +39,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     public static VBox editor;
 
     public static void uploadCommands(List<AutonomousCommand> commands) {
+        AutonomousCommandTemplate.refreshCommandsAndLogic();
         clearTable("Custom Dashboard/Autonomous");
         uploadCommandsTo(commands, "Custom Dashboard/Autonomous");
         HomePage.resetAutoView();
@@ -60,14 +62,16 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     }
 
     public static ArrayList<AutonomousCommand> downloadCommandsFrom(String baseTableName) {
-        String[] commandIndicies = Main.network.getTable(baseTableName).getSubTables().toArray(new String[0]);
+        int[] commandIndicies = Main.network.getTable(baseTableName).getSubTables().stream().mapToInt(Integer::valueOf).toArray();
         Arrays.sort(commandIndicies);
+
         ArrayList<AutonomousCommand> commands = new ArrayList<>();
-        for(String i : commandIndicies) {
+        for(int i : commandIndicies) {
             NetworkTable currCommandTable = Main.network.getTable(baseTableName + "/" + i);
 
             if(currCommandTable.containsKey("Conditional") && currCommandTable.containsSubTable("commands")) {
-                commands.add(new AutonomousCommand(currCommandTable.getEntry("Conditional").getString(""),
+                String conditional = currCommandTable.getEntry("Conditional").getString("");
+                commands.add(new AutonomousCommand(conditional,
                                                    downloadCommandsFrom(baseTableName + "/" + i + "/commands").toArray(new AutonomousCommand[0])));
             } else if(currCommandTable.containsKey("Subsystem Name") &&
                       currCommandTable.containsKey("Command Name") &&
@@ -84,32 +88,55 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     public static void commandsToPath(List<AutonomousCommand> commands, PathNode startingNode, double initialAngle, FieldTopdown field) {
         PathNode currNode = startingNode;
 
-        double angle = initialAngle;
+        AutonomousCommand lastAngle = null;
         for(AutonomousCommand command : commands) {
-            if(command.commands == null) {
+            if(!command.isBranchedCommand()) {
                 if(command.templateName.equals("Drive:turnToAngle")) {
-                    angle = command.parameterValues[0];
+                    lastAngle = command;
                     currNode.commands.add(command);
                 } else if(command.templateName.equals("Drive:driveDistance")) {
-                    currNode.commands.remove(currNode.commands.size() - 1);
-                    double distance = command.parameterValues[0] * 12;
-                    PathNode newNode = new PathNode(currNode.x + distance * Math.cos(Math.toRadians(angle)),
-                                                    currNode.y + distance * Math.sin(Math.toRadians(angle)));
-                    Drive newDrive = new Drive(currNode, newNode);
-                    field.overlay.add(newDrive);
-                    field.overlay.add(newNode);
-                    currNode = newNode;
+                    if(lastAngle != null) {
+                        double angle = lastAngle.parameterValues[0];
+                        double distance = command.parameterValues[0] * 12;
+                        PathNode newNode = new PathNode(currNode.x + distance * Math.cos(Math.toRadians(angle)),
+                                                        currNode.y + distance * Math.sin(Math.toRadians(angle)));
+                        Drive newDrive = new Drive(currNode, newNode);
+                        newDrive.turnMaxSpeed = lastAngle.parameterValues[1];
+                        newDrive.turnTimeUntilMaxSpeed = lastAngle.parameterValues[2];
+                        newDrive.angleToSlowdown = lastAngle.parameterValues[3];
+                        newDrive.driveMaxSpeed = command.parameterValues[1];
+                        newDrive.driveTimeUntilMaxSpeed = command.parameterValues[2];
+                        newDrive.distanceToSlowdown = command.parameterValues[3];
+                        newDrive.backwards = distance < 0;
+                        field.overlay.add(newDrive);
+                        field.overlay.add(newNode);
+
+                        currNode.commands.remove(lastAngle);
+                        lastAngle = null;
+                        currNode = newNode;
+                    } else {
+                        HomePage.errorMessage("Cannot Convert Commands To Path", "Drive distance specified without an angle");
+                    }
                 } else {
                     currNode.commands.add(command);
                 }
             } else {
                 List<AutonomousCommand> branchCommands = Arrays.asList(command.commands);
                 assert branchCommands.get(0).templateName.equals("Drive:turnToAngle") && branchCommands.get(1).templateName.equals("Drive:driveDistance");
+                AutonomousCommand turnCommand = branchCommands.get(0);
+                AutonomousCommand driveCommand = branchCommands.get(1);
                 double newAngle = branchCommands.get(0).parameterValues[0];
                 double distance = branchCommands.get(1).parameterValues[0] * 12;
                 PathNode newNode = new PathNode(currNode.x + distance * Math.cos(Math.toRadians(newAngle)),
                                                 currNode.y + distance * Math.sin(Math.toRadians(newAngle)));
                 Drive newDrive = new Drive(currNode, newNode);
+                newDrive.turnMaxSpeed = turnCommand.parameterValues[1];
+                newDrive.turnTimeUntilMaxSpeed = turnCommand.parameterValues[2];
+                newDrive.angleToSlowdown = turnCommand.parameterValues[3];
+                newDrive.driveMaxSpeed = driveCommand.parameterValues[1];
+                newDrive.driveTimeUntilMaxSpeed = driveCommand.parameterValues[2];
+                newDrive.distanceToSlowdown = driveCommand.parameterValues[3];
+                newDrive.backwards = distance < 0;
                 newDrive.conditional = command.conditional;
                 field.overlay.add(newDrive);
                 field.overlay.add(newNode);
@@ -138,6 +165,9 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         rebuildEditor();
     }
 
+    public File currentAutoFile = null;
+    public Button saveCurrentFile = new Button();
+
     public AutonomousPage() {
         pathDrawer = new FieldTopdown(this);
         editor = new VBox();
@@ -146,12 +176,11 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         upload.setOnAction(evt -> uploadCommands(getCommandList()));
         Button download = new Button("Download");
         download.setOnAction(evt -> {
-            PathNode currStartingNode = startingNode;
             resetPathDrawer();
-            if(currStartingNode != null) {
-                startingNode = currStartingNode;
-                pathDrawer.overlay.add(currStartingNode);
-                commandsToPath(downloadCommandsFrom("Custom Dashboard/Autonomous"), currStartingNode, 0, pathDrawer);
+            if(startingPos != null) {
+                startingNode = new PathNode(startingPos.x, startingPos.y);
+                pathDrawer.overlay.add(startingNode);
+                commandsToPath(downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, 0, pathDrawer);
                 rebuildEditor();
             }
         });
@@ -162,7 +191,11 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 FileChooser fileChooser = new FileChooser();
                 fileChooser.setTitle("Open Auto File");
 
-                FileReader reader = new FileReader(fileChooser.showOpenDialog(new Stage()));
+                currentAutoFile = fileChooser.showOpenDialog(new Stage());
+                saveCurrentFile.setVisible(true);
+                saveCurrentFile.setText("Save " + currentAutoFile.getName());
+
+                FileReader reader = new FileReader(currentAutoFile);
                 JSONObject rootObject = (JSONObject) JSONValue.parseWithException(reader);
                 reader.close();
 
@@ -200,7 +233,32 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         Button clear = new Button("Clear");
         clear.setOnAction(evt -> resetPathDrawer());
 
-        buttons.getChildren().addAll(upload, download, openFile, saveFile, clear);
+        saveCurrentFile.setVisible(false);
+        saveCurrentFile.setOnAction(evt -> {
+            if((startingPos != null) && (currentAutoFile != null)) {
+                JSONObject rootObject = new JSONObject();
+                rootObject.put("Starting Position", startingPos.name);
+                JSONArray rootCommandArray = new JSONArray();
+                rootObject.put("Commands", rootCommandArray);
+                getCommandList().forEach(c -> rootCommandArray.add(c.toJSON()));
+                try {
+                    FileWriter writer = new FileWriter(currentAutoFile);
+                    rootObject.writeJSONString(writer);
+                    writer.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        Button showAll = new Button("Show All");
+        showAll.setOnAction(evt -> {
+            if(startingNode != null) {
+                startingNode.outPaths.forEach(d -> propagateVisibility(d, true));
+            }
+        });
+
+        buttons.getChildren().addAll(upload, download, openFile, saveFile, clear, showAll, saveCurrentFile);
         buttons.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
         content.getChildren().add(buttons);
 
@@ -226,8 +284,19 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         rebuildEditor();
     }
 
-    public static void propagateAndDash(PathNode startingNode) {
-        //TODO
+    public static void propagateAndDash(PathNode startingNode, boolean certain) {
+        for(Drive path : startingNode.outPaths) {
+            boolean pathCertain = certain && (AutonomousCommandTemplate.conditionals.get(path.conditional) == AutonomousCommandTemplate.ConditionalState.True);
+            path.dashed = !pathCertain;
+            propagateAndDash(path.end, pathCertain);
+        }
+    }
+
+
+    public static void propagateVisibility(Drive root, boolean visible) {
+        root.visible = visible;
+        root.end.visible = visible;
+        root.end.outPaths.forEach(d -> propagateVisibility(d, visible));
     }
 
     public void onClick(double x, double y) {
@@ -269,26 +338,38 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         return mod360 < 0 ? 360 + mod360 : mod360;
     }
 
-    public static void addNodesCommands(ArrayList<AutonomousCommand> commands, PathNode node) {
+    public static boolean addNodesCommands(ArrayList<AutonomousCommand> commands, PathNode node) {
         commands.addAll(node.commands);
         if(node.outPaths.size() == 1) {
             Drive drive = node.outPaths.get(0);
             drive.addCommandsTo(commands);
-            addNodesCommands(commands, drive.end);
+            if(addNodesCommands(commands, drive.end))
+                return true;
         } else {
+            if(!node.isComplete())
+                return true;
+
             for (Drive outDrive : node.outPaths) {
                 ArrayList<AutonomousCommand> branchCommands = new ArrayList<>();
                 outDrive.addCommandsTo(branchCommands);
-                addNodesCommands(branchCommands, outDrive.end);
+                if(addNodesCommands(branchCommands, outDrive.end))
+                    return true;
+
                 commands.add(new AutonomousCommand(outDrive.conditional, branchCommands.toArray(new AutonomousCommand[0])));
             }
         }
+
+        return false;
     }
 
     public static ArrayList<AutonomousCommand> getCommandList() {
         ArrayList<AutonomousCommand> commands = new ArrayList<>();
-        if(startingNode != null)
-            addNodesCommands(commands, startingNode);
+        if(startingNode != null) {
+            if(addNodesCommands(commands, startingNode)) {
+                HomePage.errorMessage("Cannot Generate Commands", "Incomplete Nodes");
+                commands.clear();
+            }
+        }
 
         return commands;
     }
@@ -334,14 +415,20 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             menu.getChildren().add(delete);
 
             for(Drive drive : selectedNode.outPaths) {
-                VBox conditionalBlock = commandBlock(editor, new Pane());
+                VBox pathBlock = commandBlock(editor, new Pane()); //TODO: make this a HBox
+
                 ComboBox conditional = new ComboBox(FXCollections.observableArrayList(AutonomousCommandTemplate.conditionals.keySet()));
                 conditional.setValue(drive.conditional);
                 conditional.setOnAction(evt -> drive.conditional = (String) conditional.getValue());
-                conditionalBlock.setOnMouseEntered(evt -> drive.color = Color.PURPLE);
-                conditionalBlock.setOnMouseExited(evt -> drive.color = Color.BLUE);
-                conditionalBlock.getChildren().add(conditional);
-                editor.getChildren().add(conditionalBlock);
+                pathBlock.setOnMouseEntered(evt -> drive.color = Color.PURPLE);
+                pathBlock.setOnMouseExited(evt -> drive.color = Color.BLUE);
+
+                ToggleButton toggleVisibility = new ToggleButton("Show");
+                toggleVisibility.setSelected(drive.visible);
+                toggleVisibility.selectedProperty().addListener(evt -> propagateVisibility(drive, toggleVisibility.isSelected()));
+
+                pathBlock.getChildren().addAll(conditional, toggleVisibility);
+                editor.getChildren().add(pathBlock);
             }
 
             selectedNode.commands.forEach(c -> editor.getChildren().add(c.editorBlock(editor, selectedNode)));
@@ -364,6 +451,13 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             editor.getChildren().add(addCommand);
         } else if(selected instanceof Drive) {
             Drive selectedDrive = (Drive) selected;
+
+            ToggleButton backwardsToggle = new ToggleButton("Backwards");
+            backwardsToggle.setSelected(selectedDrive.backwards);
+            backwardsToggle.selectedProperty().addListener(evt -> {
+                selectedDrive.backwards = backwardsToggle.isSelected();
+            });
+            editor.getChildren().add(backwardsToggle);
 
             addParameterSlider(0, 15, () -> selectedDrive.driveMaxSpeed,
                                 s -> selectedDrive.driveMaxSpeed = s, "Max Drive Speed", "Feet/Sec");
