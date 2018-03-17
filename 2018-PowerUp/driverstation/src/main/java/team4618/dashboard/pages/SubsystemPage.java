@@ -29,7 +29,7 @@ public class SubsystemPage extends DashboardPage {
             content.getChildren().add(new ParameterTextbox(subsystem.parameterTable.getEntry(param)));
         }
 
-        //Main.redrawCallbacks.add(this::onJavafxLoop);
+        Main.redrawCallbacks.add(this::onJavafxLoop);
     }
 
     public void onJavafxLoop() {
@@ -46,13 +46,12 @@ public class SubsystemPage extends DashboardPage {
                         compass.setAngle(value);
                     }
                 } else {
-                    graph.addData(state, unit, value, time);
+                    //graph.addData(state, unit, value, time);
                 }
             }
         }
 
-        graph.draw();
-        //System.out.println("Sampled at " + time);
+        //graph.draw();
     }
 
     public void setPageSelected(boolean selected) { }

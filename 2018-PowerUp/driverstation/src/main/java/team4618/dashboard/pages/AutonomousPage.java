@@ -292,7 +292,6 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         }
     }
 
-
     public static void propagateVisibility(Drive root, boolean visible) {
         root.visible = visible;
         root.end.visible = visible;
@@ -374,12 +373,11 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         return commands;
     }
 
-    public static VBox commandBlock(VBox parent, Node titleBar) {
+    public static Pane commandBlock(VBox parent, Pane commandBlock, Node titleBar) {
         DropShadow dropShadow = new DropShadow();
         dropShadow.setRadius(5.0);
         dropShadow.setColor(Color.BLACK);
 
-        VBox commandBlock = new VBox();
         commandBlock.setPadding(new Insets(10));
         commandBlock.setBackground(new Background(new BackgroundFill(Color.color(0.67, 0.67, 0.67, 1), new CornerRadii(10), new Insets(5))));
         commandBlock.setEffect(dropShadow);
@@ -387,6 +385,9 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         commandBlock.getChildren().add(titleBar);
         return commandBlock;
     }
+
+    public static VBox commandBlock(VBox parent, Node titleBar) { return (VBox) commandBlock(parent, new VBox(), titleBar); }
+
     public static VBox commandBlock(VBox parent, String title) { return commandBlock(parent, new Label(title)); }
 
     public static void rebuildEditor() {
@@ -415,13 +416,14 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             menu.getChildren().add(delete);
 
             for(Drive drive : selectedNode.outPaths) {
-                VBox pathBlock = commandBlock(editor, new Pane()); //TODO: make this a HBox
+                HBox pathBlock = (HBox) commandBlock(editor, new HBox(), new Pane());
+                pathBlock.setOnMouseEntered(evt -> drive.color = Color.PURPLE);
+                pathBlock.setOnMouseExited(evt -> drive.color = Color.BLUE);
+                pathBlock.setOnMouseClicked(evt -> Main.autonomousPage.setSelected(drive));
 
                 ComboBox conditional = new ComboBox(FXCollections.observableArrayList(AutonomousCommandTemplate.conditionals.keySet()));
                 conditional.setValue(drive.conditional);
                 conditional.setOnAction(evt -> drive.conditional = (String) conditional.getValue());
-                pathBlock.setOnMouseEntered(evt -> drive.color = Color.PURPLE);
-                pathBlock.setOnMouseExited(evt -> drive.color = Color.BLUE);
 
                 ToggleButton toggleVisibility = new ToggleButton("Show");
                 toggleVisibility.setSelected(drive.visible);

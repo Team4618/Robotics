@@ -88,6 +88,8 @@ public class Main extends Application implements Consumer<ConnectionNotification
     public BorderPane root = new BorderPane();
     public VBox menu = new VBox();
 
+    public static AutonomousPage autonomousPage;
+
     @Override
     public void start(Stage window) {
         network = NetworkTableInstance.getDefault();
@@ -135,7 +137,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
         HomePage homePage = new HomePage();
         addMenuButton("Home", homePage);
 
-        AutonomousPage autonomousPage = new AutonomousPage();
+        autonomousPage = new AutonomousPage();
         addMenuButton("Autonomous", autonomousPage);
 
         RobotPage robotPage = new RobotPage();

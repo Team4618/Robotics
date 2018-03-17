@@ -52,6 +52,7 @@ public class Robot extends TimedRobot {
         driveSubsystem.right.shepherd.set(0);
         intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
         intakeSubsystem.liftUp = false;
+        intakeSubsystem.setIntakePower(0);
         elevatorSubsystem.heightSetpoint = 0;
 
         driveSubsystem.navx.reset();
@@ -86,6 +87,7 @@ public class Robot extends TimedRobot {
     ToggleButton climbToggle = new ToggleButton(driver, 8, false);
     ToggleButton elevatorBreakToggle = new ToggleButton(driver, 10, false);
     double intakeAnalog() { return driver.getRawAxis(2); }
+    double liftDownAnalog() { return driver.getRawAxis(3); }
     double elevatorAnalog() { return driver.getRawAxis(5); }
 
     public void teleopInit() {
@@ -131,6 +133,8 @@ public class Robot extends TimedRobot {
                     intakeHasCube = true;
                 }
                 setIntakeState(intakeHasCube ? 0 : 0.75, !intakeHasCube, false);
+            } else if(liftDownAnalog() > 0.1){
+                setIntakeState(0, false, false);
             } else {
                 intakeHasCube = false;
                 setIntakeState(0, false, true);
@@ -161,7 +165,7 @@ public class Robot extends TimedRobot {
             double elevatorPower = Math.min(0, elevatorAnalog());
 
             climbToggle.state = true;
-            driveMultiplier = 0.5;
+            driveMultiplier = 0.45;
             intakeSubsystem.setIntakePower(timeElapsed < 0.5 ? -1 : 0);
             intakeSubsystem.liftUp = true;
             intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
@@ -191,7 +195,7 @@ public class Robot extends TimedRobot {
             driveForClimbCommandState.init = false;
         } else {
             driveSubsystem.shifter.set(shiftToggle.state ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
-            driveSubsystem.teleopDrive.arcadeDrive((shiftToggle.state ? 1.0 : 0.85) * driver.getRawAxis(0), -driveMultiplier * driver.getRawAxis(1));
+            driveSubsystem.teleopDrive.arcadeDrive((shiftToggle.state ? 0.85 : 0.75) * driver.getRawAxis(0), -driveMultiplier * driver.getRawAxis(1));
         }
 
         //OP override controls (these go last so they overwrite any values above)
