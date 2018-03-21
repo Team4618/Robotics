@@ -92,9 +92,12 @@ public class IntakeSubsystem extends Subsystem {
     double startTime = 0;
 
     public boolean liftSittingDown = false;
-    boolean liftLatched = false;
+    public boolean liftLatched = false;
 
     public void periodic() {
+        //TODO: clean this up
+        //it doesnt latch down at the start of auto or teleop, relying on the movement of the robot jigging it loose, fix this
+
         double liftPosition = getLiftPosition();
         if(liftUp) {
             if(liftPosition < value(LiftHigh)) {
@@ -133,6 +136,7 @@ public class IntakeSubsystem extends Subsystem {
         }
         wasUp = liftUp;
 
+        //System.out.println("Latched " + liftLatched + " Sitting Down " + liftSittingDown);
         //System.out.println("Elapsed: " + (Timer.getFPGATimestamp() - startTime));
     }
 

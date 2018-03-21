@@ -8,8 +8,8 @@ import team4618.dashboard.pages.AutonomousPage;
 import java.util.ArrayList;
 
 public class PathNode extends FieldTopdown.Drawable {
-    public ArrayList<Drive> outPaths = new ArrayList<>();
-    public Drive inPath;
+    public ArrayList<DriveManeuver> outPaths = new ArrayList<>();
+    public DriveManeuver inPath;
     public ArrayList<AutonomousCommand> commands = new ArrayList<>();
     public boolean draggable = true;
     public boolean visible = true;
@@ -30,7 +30,7 @@ public class PathNode extends FieldTopdown.Drawable {
 
     public boolean isComplete() {
         Integer conditionsSet = 0;
-        for(Drive d : outPaths) {
+        for(DriveManeuver d : outPaths) {
             if(!d.conditional.equals("alwaysTrue"))
                 conditionsSet++;
         }

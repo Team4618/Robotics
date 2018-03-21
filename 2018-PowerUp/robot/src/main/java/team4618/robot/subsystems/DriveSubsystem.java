@@ -9,8 +9,17 @@ import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 
 import team4618.robot.CommandSequence.CommandState;
+import team4618.robot.CurveFollower;
+import team4618.robot.CurveFollower.BezierCurve;
+import team4618.robot.CurveFollower.DifferentialTrajectory;
+import team4618.robot.CurveFollower.Vector;
 import team4618.robot.Subsystem;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import static team4618.robot.Robot.driveSubsystem;
 import static team4618.robot.subsystems.DriveSubsystem.Parameters.*;
 import static team4618.robot.Subsystem.Units.*;
 
@@ -196,10 +205,49 @@ public class DriveSubsystem extends Subsystem {
         return turn_done;
     }
 
-    //TODO: this
+    BezierCurve curve = null;
+    ArrayList<DifferentialTrajectory> curveProfile = new ArrayList<>();
+    int curvei = 0;
+
     @Command
-    public boolean driveCurve(CommandState commandState) {
-        return false;
+    public boolean driveCurve(CommandState commandState, @Unit(Seconds) double time, double[] pointCoords) {
+        if(commandState.init) {
+            curvei = 0;
+
+            if(pointCoords.length % 2 == 0) {
+                ArrayList<Vector> points = new ArrayList<>();
+                points.add(new Vector(0, 0));
+                for(int i = 0; i < pointCoords.length; i += 2)
+                    points.add(new Vector(pointCoords[i], pointCoords[i + 1]));
+
+                curve = new BezierCurve(points);
+                curveProfile = curve.buildProfile(time);
+            } else {
+                System.out.println("Incorrect number of point coordinates: " + pointCoords.length);
+                curveProfile = new ArrayList<>();
+            }
+        }
+
+        boolean running = curvei < curveProfile.size();
+
+        if(running) {
+            DifferentialTrajectory currTraj = curveProfile.get(curvei);
+
+            double angleError = currTraj.angle - (navx.getAngle() + 90);
+            System.out.println(curvei + "/" + curveProfile.size() + " Angle Error: " + angleError + " R " + currTraj.l + " L " + currTraj.r);
+
+            left.setSetpoint(currTraj.r);//+ (angleError * 0.01));
+            right.setSetpoint(currTraj.l);//- (angleError * 0.01));
+
+            while((curvei < curveProfile.size()) && (commandState.elapsedTime > curveProfile.get(curvei).t)) {
+                curvei++;
+            }
+        } else {
+            left.setSetpoint(0);
+            right.setSetpoint(0);
+        }
+
+        return !running;
     }
 
     public String name() { return "Drive"; }

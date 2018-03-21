@@ -70,8 +70,10 @@ public class MultiLineGraph extends VBox {
         }
 
         public boolean isOnLine(Entry e, Entry a, Entry b) {
-
-            return false;
+            double atob = Math.sqrt((b.value - a.value) * (b.value - a.value) + (b.time - a.time) * (b.time - a.time));
+            double atoe = Math.sqrt((e.value - a.value) * (e.value - a.value) + (e.time - a.time) * (e.time - a.time));
+            double etob = Math.sqrt((b.value - e.value) * (b.value - e.value) + (b.time - e.time) * (b.time - e.time));
+            return false; //Math.abs(atoe + etob - atob) == 0.0;
         }
 
         public void add(Entry e) {
@@ -224,6 +226,12 @@ public class MultiLineGraph extends VBox {
                     Entry e1 = g.data.get(i);
                     Entry e2 = g.data.get(i + 1);
 
+                    /*
+                    gc.setFill(Color.BLACK);
+                    gc.fillOval(getX(e1) - 2, getY(g, e1.value) - 2, 4, 4);
+                    gc.fillOval(getX(e2) - 2, getY(g, e2.value) - 2, 4, 4);
+                    */
+
                     if(inDomain(e1) && inDomain(e2)) {
                         gc.strokeLine(getX(e1), getY(g, e1.value), getX(e2), getY(g, e2.value));
                     }
@@ -264,12 +272,6 @@ public class MultiLineGraph extends VBox {
 
     public double Lerp(double a, double t, double b) {
         return (1 - t) * a + t * b;
-    }
-
-    public double getValueAt(Graph g, double t) {
-
-
-        return 0;
     }
 
     public void addData(String graphName, Units unit, double data, double time) {

@@ -7,6 +7,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.effect.DropShadow;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
@@ -15,10 +16,7 @@ import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
 import team4618.dashboard.Main;
-import team4618.dashboard.autonomous.AutonomousCommand;
-import team4618.dashboard.autonomous.AutonomousCommandTemplate;
-import team4618.dashboard.autonomous.Drive;
-import team4618.dashboard.autonomous.PathNode;
+import team4618.dashboard.autonomous.*;
 import team4618.dashboard.components.FieldTopdown;
 
 import java.io.File;
@@ -31,7 +29,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClick{
+public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClick {
     ScrollPane node = new ScrollPane();
     VBox content = new VBox();
     HBox buttons = new HBox();
@@ -85,7 +83,8 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         return commands;
     }
 
-    public static void commandsToPath(List<AutonomousCommand> commands, PathNode startingNode, double initialAngle, FieldTopdown field) {
+    //TODO: update with curves
+    public static void commandsToPath(List<AutonomousCommand> commands, PathNode startingNode, FieldTopdown field) {
         PathNode currNode = startingNode;
 
         AutonomousCommand lastAngle = null;
@@ -100,7 +99,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                         double distance = command.parameterValues[0] * 12;
                         PathNode newNode = new PathNode(currNode.x + distance * Math.cos(Math.toRadians(angle)),
                                                         currNode.y + distance * Math.sin(Math.toRadians(angle)));
-                        Drive newDrive = new Drive(currNode, newNode);
+                        DriveStraight newDrive = new DriveStraight(currNode, newNode);
                         newDrive.turnMaxSpeed = lastAngle.parameterValues[1];
                         newDrive.turnTimeUntilMaxSpeed = lastAngle.parameterValues[2];
                         newDrive.angleToSlowdown = lastAngle.parameterValues[3];
@@ -117,6 +116,34 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                     } else {
                         HomePage.errorMessage("Cannot Convert Commands To Path", "Drive distance specified without an angle");
                     }
+                } else if(command.templateName.equals("Drive:driveCurve")) {
+                    if(lastAngle != null) {
+                        double time = command.parameterValues[0];
+
+                        double endX = currNode.x + command.parameterValues[command.parameterValues.length - 2] * 12;
+                        double endY = currNode.y + command.parameterValues[command.parameterValues.length - 1] * 12;
+
+                        PathNode newNode = new PathNode(endX, endY);
+
+                        //TODO: is backwards
+                        DriveCurve newDrive = new DriveCurve(currNode, newNode);
+                        newDrive.time = time;
+
+                        for(int i = 1; i < command.parameterValues.length - 2; i += 2) {
+                            DriveCurve.ControlPoint c = new DriveCurve.ControlPoint(currNode.x + command.parameterValues[i] * 12, currNode.y + command.parameterValues[i + 1] * 12);
+                            newDrive.controlPoints.add(c);
+                            field.overlay.add(c);
+                        }
+
+                        field.overlay.add(newDrive);
+                        field.overlay.add(newNode);
+
+                        currNode.commands.remove(lastAngle);
+                        lastAngle = null;
+                        currNode = newNode;
+                    } else {
+                        HomePage.errorMessage("Cannot Convert Commands To Path", "Drive curve specified without an angle");
+                    }
                 } else {
                     currNode.commands.add(command);
                 }
@@ -129,7 +156,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 double distance = branchCommands.get(1).parameterValues[0] * 12;
                 PathNode newNode = new PathNode(currNode.x + distance * Math.cos(Math.toRadians(newAngle)),
                                                 currNode.y + distance * Math.sin(Math.toRadians(newAngle)));
-                Drive newDrive = new Drive(currNode, newNode);
+                DriveStraight newDrive = new DriveStraight(currNode, newNode);
                 newDrive.turnMaxSpeed = turnCommand.parameterValues[1];
                 newDrive.turnTimeUntilMaxSpeed = turnCommand.parameterValues[2];
                 newDrive.angleToSlowdown = turnCommand.parameterValues[3];
@@ -140,7 +167,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 newDrive.conditional = command.conditional;
                 field.overlay.add(newDrive);
                 field.overlay.add(newNode);
-                commandsToPath(branchCommands.subList(2, branchCommands.size()), newNode, newAngle, field);
+                commandsToPath(branchCommands.subList(2, branchCommands.size()), newNode, field);
             }
         }
     }
@@ -167,10 +194,23 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
 
     public File currentAutoFile = null;
     public Button saveCurrentFile = new Button();
+    public boolean drawCurves = false;
 
     public AutonomousPage() {
         pathDrawer = new FieldTopdown(this);
         editor = new VBox();
+
+        Label pathModeLabel = new Label("Straight Lines");
+        pathModeLabel.setTooltip(new Tooltip("S for straight lines, C for curves"));
+
+        node.setOnKeyReleased(evt -> {
+            if(evt.getCode().equals(KeyCode.S)) {
+                drawCurves = false;
+            } else if(evt.getCode().equals(KeyCode.C)) {
+                drawCurves = true;
+            }
+            pathModeLabel.setText(drawCurves ? "Curves" : "Straight Lines");
+        });
 
         Button upload = new Button("Upload");
         upload.setOnAction(evt -> uploadCommands(getCommandList()));
@@ -180,7 +220,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             if(startingPos != null) {
                 startingNode = new PathNode(startingPos.x, startingPos.y);
                 pathDrawer.overlay.add(startingNode);
-                commandsToPath(downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, 0, pathDrawer);
+                commandsToPath(downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, pathDrawer);
                 rebuildEditor();
             }
         });
@@ -204,7 +244,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 pathDrawer.overlay.add(startingNode);
                 ArrayList<AutonomousCommand> commandList = new ArrayList<>();
                 ((JSONArray) rootObject.get("Commands")).forEach(j -> commandList.add(new AutonomousCommand((JSONObject) j)));
-                commandsToPath(commandList, startingNode, 0, pathDrawer);
+                commandsToPath(commandList, startingNode, pathDrawer);
             } catch (Exception e) { e.printStackTrace(); }
             rebuildEditor();
         });
@@ -221,7 +261,11 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 rootObject.put("Commands", rootCommandArray);
                 getCommandList().forEach(c -> rootCommandArray.add(c.toJSON()));
                 try {
-                    FileWriter writer = new FileWriter(fileChooser.showSaveDialog(new Stage()));
+                    currentAutoFile = fileChooser.showSaveDialog(new Stage());
+                    saveCurrentFile.setVisible(true);
+                    saveCurrentFile.setText("Save " + currentAutoFile.getName());
+
+                    FileWriter writer = new FileWriter(currentAutoFile);
                     rootObject.writeJSONString(writer);
                     writer.close();
                 } catch (IOException e) {
@@ -258,7 +302,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             }
         });
 
-        buttons.getChildren().addAll(upload, download, openFile, saveFile, clear, showAll, saveCurrentFile);
+        buttons.getChildren().addAll(pathModeLabel, upload, download, openFile, saveFile, clear, showAll, saveCurrentFile);
         buttons.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
         content.getChildren().add(buttons);
 
@@ -277,7 +321,8 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     public static FieldTopdown.StartingPosition startingPos;
 
     public void setSelected(FieldTopdown.Drawable newSelected) {
-        if(!(newSelected instanceof FieldTopdown.StartingPosition)) {
+        if(!(newSelected instanceof FieldTopdown.StartingPosition) &&
+                !(newSelected instanceof DriveCurve.ControlPoint)) {
             selected = selected == newSelected ? null : newSelected;
         }
 
@@ -285,14 +330,14 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     }
 
     public static void propagateAndDash(PathNode startingNode, boolean certain) {
-        for(Drive path : startingNode.outPaths) {
+        for(DriveManeuver path : startingNode.outPaths) {
             boolean pathCertain = certain && (AutonomousCommandTemplate.conditionals.get(path.conditional) == AutonomousCommandTemplate.ConditionalState.True);
             path.dashed = !pathCertain;
             propagateAndDash(path.end, pathCertain);
         }
     }
 
-    public static void propagateVisibility(Drive root, boolean visible) {
+    public static void propagateVisibility(DriveManeuver root, boolean visible) {
         root.visible = visible;
         root.end.visible = visible;
         root.end.outPaths.forEach(d -> propagateVisibility(d, visible));
@@ -301,9 +346,19 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     public void onClick(double x, double y) {
         if(selected instanceof PathNode) {
             PathNode newTurn = new PathNode(x, y);
-            pathDrawer.overlay.add(new Drive((PathNode) selected, newTurn));
             pathDrawer.overlay.add(newTurn);
-            setSelected(newTurn);
+
+            if(drawCurves) {
+                DriveCurve curve = new DriveCurve((PathNode) selected, newTurn);
+                pathDrawer.overlay.add(curve);
+                DriveCurve.ControlPoint c = new DriveCurve.ControlPoint((curve.beginning.x + curve.end.x) / 2, (curve.beginning.y + curve.end.y) / 2);
+                curve.controlPoints.add(c);
+                pathDrawer.overlay.add(c);
+                setSelected(curve);
+            } else {
+                pathDrawer.overlay.add(new DriveStraight((PathNode) selected, newTurn));
+                setSelected(newTurn);
+            }
         }
     }
 
@@ -324,9 +379,9 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     }
 
     public static void deleteNodeOuts(PathNode node) {
-        for(Drive outPath : node.outPaths) {
+        for(DriveManeuver outPath : node.outPaths) {
             deleteNodeOuts(outPath.end);
-            pathDrawer.overlay.remove(outPath);
+            outPath.remove(pathDrawer.overlay);
         }
         pathDrawer.overlay.remove(node);
     }
@@ -340,7 +395,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     public static boolean addNodesCommands(ArrayList<AutonomousCommand> commands, PathNode node) {
         commands.addAll(node.commands);
         if(node.outPaths.size() == 1) {
-            Drive drive = node.outPaths.get(0);
+            DriveManeuver drive = node.outPaths.get(0);
             drive.addCommandsTo(commands);
             if(addNodesCommands(commands, drive.end))
                 return true;
@@ -348,7 +403,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             if(!node.isComplete())
                 return true;
 
-            for (Drive outDrive : node.outPaths) {
+            for (DriveManeuver outDrive : node.outPaths) {
                 ArrayList<AutonomousCommand> branchCommands = new ArrayList<>();
                 outDrive.addCommandsTo(branchCommands);
                 if(addNodesCommands(branchCommands, outDrive.end))
@@ -405,7 +460,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             delete.setOnAction(evt -> {
                 deleteNodeOuts(selectedNode);
                 if (selectedNode.inPath != null) {
-                    pathDrawer.overlay.remove(selectedNode.inPath);
+                    selectedNode.inPath.remove(pathDrawer.overlay);
                     selectedNode.inPath.beginning.outPaths.remove(selectedNode.inPath);
                 }
                 if (selected == startingNode) { startingNode = null; }
@@ -415,7 +470,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             });
             menu.getChildren().add(delete);
 
-            for(Drive drive : selectedNode.outPaths) {
+            for(DriveManeuver drive : selectedNode.outPaths) {
                 HBox pathBlock = (HBox) commandBlock(editor, new HBox(), new Pane());
                 pathBlock.setOnMouseEntered(evt -> drive.color = Color.PURPLE);
                 pathBlock.setOnMouseExited(evt -> drive.color = Color.BLUE);
@@ -451,8 +506,8 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 }
             }
             editor.getChildren().add(addCommand);
-        } else if(selected instanceof Drive) {
-            Drive selectedDrive = (Drive) selected;
+        } else if(selected instanceof DriveStraight) {
+            DriveStraight selectedDrive = (DriveStraight) selected;
 
             ToggleButton backwardsToggle = new ToggleButton("Backwards");
             backwardsToggle.setSelected(selectedDrive.backwards);
@@ -473,6 +528,30 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                     s -> selectedDrive.driveTimeUntilMaxSpeed = s, "Drive Acceleration Time", "Seconds");
             addParameterSlider(0, 5, () -> selectedDrive.turnTimeUntilMaxSpeed,
                     s -> selectedDrive.turnTimeUntilMaxSpeed = s, "Turn Acceleration Time", "Seconds");
+        } else if(selected instanceof DriveCurve) {
+            DriveCurve curve = (DriveCurve) selected;
+            Button addControlPoint = new Button("Add Control Point");
+            addControlPoint.setOnAction(evt -> {
+                DriveCurve.ControlPoint lastC = curve.controlPoints.get(curve.controlPoints.size() - 1);
+                DriveCurve.ControlPoint c = new DriveCurve.ControlPoint((curve.end.x + lastC.x) / 2, (curve.end.y + lastC.y) / 2);
+                curve.controlPoints.add(c);
+                pathDrawer.overlay.add(c);
+            });
+
+            Slider timeSlider = new Slider(0, 40, curve.time);
+            Label timeLabel = new Label(curve.time + " seconds");
+            timeSlider.valueProperty().addListener(l -> {
+                curve.time = timeSlider.getValue();
+                timeLabel.setText(curve.time + " seconds");
+            });
+
+
+            Slider tHeadingSlider = new Slider(0, 1, curve.tHeading);
+            tHeadingSlider.valueProperty().addListener(l -> {
+                curve.tHeading = tHeadingSlider.getValue();
+            });
+
+            editor.getChildren().addAll(addControlPoint, timeSlider, timeLabel, tHeadingSlider);
         }
     }
 

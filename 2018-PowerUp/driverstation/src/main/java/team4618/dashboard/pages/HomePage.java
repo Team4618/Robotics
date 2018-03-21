@@ -70,7 +70,7 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
         if(startingPos != null) {
             PathNode startingNode = new PathNode(startingPos.x, startingPos.y);
             liveFieldView.overlay.add(startingNode);
-            AutonomousPage.commandsToPath(AutonomousPage.downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, 0, liveFieldView);
+            AutonomousPage.commandsToPath(AutonomousPage.downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, liveFieldView);
             AutonomousPage.propagateAndDash(startingNode, true);
             liveFieldView.overlay.forEach(x -> x.interactable = false);
         }

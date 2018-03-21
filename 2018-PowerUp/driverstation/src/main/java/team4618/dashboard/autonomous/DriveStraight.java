@@ -7,14 +7,7 @@ import team4618.dashboard.pages.AutonomousPage;
 
 import java.util.List;
 
-public class Drive extends FieldTopdown.Drawable {
-    public PathNode beginning;
-    public PathNode end;
-    public String conditional = "alwaysTrue";
-    public Color color;
-    public boolean dashed = false;
-    public boolean visible = true;
-
+public class DriveStraight extends DriveManeuver {
     public double turnMaxSpeed = 2;
     public double turnTimeUntilMaxSpeed = 1;
     public double angleToSlowdown = 10;
@@ -23,9 +16,7 @@ public class Drive extends FieldTopdown.Drawable {
     public double driveTimeUntilMaxSpeed = 1;
     public double distanceToSlowdown = 1;
 
-    public boolean backwards = false;
-
-    public Drive(PathNode b, PathNode e) {
+    public DriveStraight(PathNode b, PathNode e) {
         beginning = b;
         beginning.outPaths.add(this);
         end = e;

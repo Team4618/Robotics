@@ -6,6 +6,9 @@ import team4618.robot.subsystems.ElevatorSubsystem;
 import team4618.robot.subsystems.IntakeSubsystem;
 
 import java.sql.Time;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import static team4618.robot.CommandSequence.autoTable;
 import static team4618.robot.CommandSequence.teleopTable;
@@ -22,7 +25,8 @@ public class Robot extends TimedRobot {
     CommandSequence autoProgram;
 
     public void robotInit() {
-        CommandSequence.init(this, "Shopping Cart");
+        //TODO: switch name for different bots
+        CommandSequence.init(this, "Otis");
         autoProgram = new CommandSequence(CommandSequence.table.getSubTable("Executing"));
         Subsystems.init();
     }
@@ -35,6 +39,7 @@ public class Robot extends TimedRobot {
             driveSubsystem.navx.reset();
             elevatorSubsystem.shepherd.setSelectedSensorPosition(0, 0, 0);
             elevatorSubsystem.shepherd.set(0);
+            elevatorSubsystem.heightSetpoint = 0;
         }
 
         if(op.getRawButton(9)) {
@@ -89,19 +94,29 @@ public class Robot extends TimedRobot {
     double intakeAnalog() { return driver.getRawAxis(2); }
     double liftDownAnalog() { return driver.getRawAxis(3); }
     double elevatorAnalog() { return driver.getRawAxis(5); }
+    boolean climbDisableHold() { return driver.getPOV() == 180; }
 
     public void teleopInit() {
         driveSubsystem.shifter.set(DoubleSolenoid.Value.kReverse);
         driveSubsystem.left.shepherd.set(0);
         driveSubsystem.right.shepherd.set(0);
 
-        elevatorSetpoint = 0;
-        elevatorSubsystem.heightSetpoint = 0;
         intakeSubsystem.liftUp = false;
+        driveForClimb = false;
         Button.resetAll();
+
+        /*
+        testCurve = buildProfile(2.5, Arrays.asList(new Vector(0, 0), new Vector(0, 15), new Vector(5, 15)));
+        testCurvei = 0;
+        testCurveStartTime = Timer.getFPGATimestamp();
+        */
     }
 
-    int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000 };
+
+    //int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000 };
+    //TODO: otis
+    int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000, 30000 };
+
     int elevatorSetpoint = 0;
     boolean driveForClimb = false;
     boolean elevatorUpForClimb = false;
@@ -121,12 +136,17 @@ public class Robot extends TimedRobot {
 
         //intake states
         if(!climbToggle.state) {
-            if (shootSlowButton.isDown()) {
+            //TODO: put this on the dpad
+            if(elevatorBreakToggle.isDown()) {
+                intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+                intakeSubsystem.liftUp = true;
+                intakeSubsystem.setIntakePower((intakeSubsystem.getLiftPosition() < -70) ? -1 : 0);
+            } else if (shootSlowButton.isDown()) {
                 setIntakeState(-0.35, false, false);
             } else if (shootFastButton.isDown()) {
                 setIntakeState(-0.55, false, false);
             } else if (pullInButton.isDown()) {
-                setIntakeState(0.75, false, true);
+                setIntakeState(0.75, false, false);
             } else if (intakeAnalog() > 0.1) {
                 elevatorSetpoint = 0;
                 if(intakeSubsystem.hasCube()) {
@@ -134,10 +154,10 @@ public class Robot extends TimedRobot {
                 }
                 setIntakeState(intakeHasCube ? 0 : 0.75, !intakeHasCube, false);
             } else if(liftDownAnalog() > 0.1){
-                setIntakeState(0, false, false);
+                setIntakeState(0, false, true);
             } else {
                 intakeHasCube = false;
-                setIntakeState(0, false, true);
+                setIntakeState(0, false, false);
             }
 
             intakeSubsystem.liftUp &= (elevatorSetpoint == 0) && (elevatorSubsystem.getHeight() < 10000);
@@ -169,15 +189,16 @@ public class Robot extends TimedRobot {
             intakeSubsystem.setIntakePower(timeElapsed < 0.5 ? -1 : 0);
             intakeSubsystem.liftUp = true;
             intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
-            elevatorSubsystem.heightSetpoint = intakeSubsystem.isLiftUp() ? 29000 : 0;
+            double climbSetpoint = 29000;
+            elevatorSubsystem.heightSetpoint = intakeSubsystem.isLiftUp() ? climbSetpoint : 0;
 
-            if(elevatorSubsystem.isAt(29000) && (elevatorPower < -0.15)) {
+            if(elevatorSubsystem.isAt(climbSetpoint) && ((elevatorPower < -0.15) || climbDisableHold())) {
                 elevatorUpForClimb = false;
             }
 
             if(!elevatorUpForClimb) {
-                boolean elevatorStalling = (Math.abs(elevatorSubsystem.shepherd.getMotorOutputPercent()) > 0.8) &&
-                        (Math.abs(elevatorSubsystem.getSpeed()) < 4000);
+                boolean elevatorStalling = false;
+                //(Math.abs(elevatorSubsystem.shepherd.getMotorOutputPercent()) > 0.8) && (Math.abs(elevatorSubsystem.getSpeed()) < 4000);
                 elevatorSubsystem.shepherd.set(elevatorPower);
                 elevatorSubsystem.auxiliary.set(elevatorStalling ? 0 : elevatorPower);
             }
@@ -195,7 +216,7 @@ public class Robot extends TimedRobot {
             driveForClimbCommandState.init = false;
         } else {
             driveSubsystem.shifter.set(shiftToggle.state ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
-            driveSubsystem.teleopDrive.arcadeDrive((shiftToggle.state ? 0.85 : 0.75) * driver.getRawAxis(0), -driveMultiplier * driver.getRawAxis(1));
+            driveSubsystem.teleopDrive.arcadeDrive((shiftToggle.state ? 0.85 : 0.75) * driveMultiplier * driver.getRawAxis(0), -driveMultiplier * driver.getRawAxis(1));
         }
 
         //OP override controls (these go last so they overwrite any values above)
@@ -205,8 +226,16 @@ public class Robot extends TimedRobot {
             elevatorSubsystem.periodicEnabled = false;
         }
 
+        //TODO: otis - testing
+        /*
+        if((elevatorSubsystem.getHeight() < elevatorSetpoints[2]) && (elevatorSubsystem.heightSetpoint < 2000)) {
+            elevatorSubsystem.periodicEnabled = false;
+            elevatorSubsystem.shepherd.set(0);
+        }
+        */
+
         if(intakeOverride.state) {
-            intakeSubsystem.setLiftPower(op.getRawAxis(1));
+            intakeSubsystem.setLiftPower(op.getRawAxis(2));
             intakeSubsystem.latch.set(op.getRawButton(2) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
             intakeSubsystem.periodicEnabled = false;
         } else {
@@ -222,6 +251,7 @@ public class Robot extends TimedRobot {
         teleopTable.getEntry("Intake").setString(intakeOverride.state ? "Manual" : "Automatic");
         teleopTable.getEntry("Cube Sensor").setString(intakeSubsystem.cubeSensorEnabled ? "Enabled" : "Disabled");
         teleopTable.getEntry("Climb Mode").setString(climbToggle.state ? "Enabled" : "Disabled");
+        teleopTable.getEntry("Driver DPad").setNumber(driver.getPOV());
 
         Subsystems.periodic();
     }

@@ -88,7 +88,6 @@ public class CommandSequence {
         }
     }
 
-
     ArrayList<Command> commands = new ArrayList<>();
     int currentlyExecuting = 0;
     NetworkTable currentlyExecutingTable;
@@ -145,9 +144,16 @@ public class CommandSequence {
                 }
                 currentCommand.state.update();
 
-                Object[] params = new Object[1 + currentCommand.parameters.length];
+                //TODO: clean this up
+                Class<?>[] paramTypes = currentCommand.command.getParameterTypes();
+                boolean overflowArray = paramTypes[paramTypes.length - 1] == double[].class;
+
+                Object[] params = new Object[paramTypes.length];
                 params[0] = currentCommand.state;
-                for (int i = 0; i < currentCommand.parameters.length; i++) {
+                if(overflowArray) {
+                    params[paramTypes.length - 1] = Arrays.copyOfRange(currentCommand.parameters, paramTypes.length - 2, currentCommand.parameters.length);
+                }
+                for (int i = 0; i < paramTypes.length - (overflowArray ? 2 : 1); i++) {
                     params[i + 1] = currentCommand.parameters[i];
                 }
 

@@ -43,10 +43,8 @@ public abstract class Subsystem implements TableEntryListener {
         int flag = EntryListenerFlags.kUpdate | EntryListenerFlags.kLocal | EntryListenerFlags.kNew;
         parameterTable.addEntryListener(this, flag);
 
-        for(Class inner : this.getClass().getDeclaredClasses())
-        {
-            if(inner.isEnum() && inner.isAnnotationPresent(ParameterEnum.class))
-            {
+        for(Class inner : this.getClass().getDeclaredClasses()) {
+            if(inner.isEnum() && inner.isAnnotationPresent(ParameterEnum.class)) {
                 parameters = (Enum[]) inner.getEnumConstants();
             }
         }
@@ -56,20 +54,21 @@ public abstract class Subsystem implements TableEntryListener {
                 ArrayList<String> params = new ArrayList<>();
                 ArrayList<String> units = new ArrayList<>();
 
-                for(Parameter param : function.getParameters()) {
-                    if(param.isAnnotationPresent(Unit.class) && (param.getType() != CommandSequence.CommandState.class)) {
+                Parameter[] parameters = function.getParameters();
+                if(parameters[0].getType() != CommandSequence.CommandState.class)
+                    System.out.println("First parameter of " + name() + ":" + function.getName() + " is not the CommandState");
+
+                for(int i = 1; i < parameters.length; i++) {
+                    Parameter param = parameters[i];
+                    if((param.getType() == double.class) && param.isAnnotationPresent(Unit.class)) {
                         params.add(param.getName());
                         units.add(param.getAnnotation(Unit.class).value().toString());
+                    } else if(param.getType() == double[].class) {
+                        //TODO: send data about overflow array
+                    } else {
+                        System.out.println(name() + ":" + function.getName() + ": Invalid type " + param.getType() + ":" + param.getName());
                     }
                 }
-
-                /*
-                String[] paramsArray = new String[params.size()];
-                for(int i = 0; i < paramsArray.length; i++) { paramsArray[i] = params.get(i); }
-
-                String[] unitsArray = new String[units.size()];
-                for(int i = 0; i < unitsArray.length; i++) { unitsArray[i] = units.get(i); }
-                */
 
                 commandTable.getEntry(function.getName() + "_ParamNames").setStringArray(params.toArray(new String[params.size()])); //paramsArray);
                 commandTable.getEntry(function.getName() + "_ParamUnits").setStringArray(units.toArray(new String[units.size()])); //unitsArray);
