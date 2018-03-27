@@ -26,7 +26,7 @@ public class Robot extends TimedRobot {
 
     public void robotInit() {
         //TODO: switch name for different bots
-        CommandSequence.init(this, "Otis");
+        CommandSequence.init(this, "Felix");
         autoProgram = new CommandSequence(CommandSequence.table.getSubTable("Executing"));
         Subsystems.init();
     }
@@ -81,6 +81,10 @@ public class Robot extends TimedRobot {
     ToggleButton elevatorOverride = new ToggleButton(op, 10, false);
     ToggleButton intakeOverride = new ToggleButton(op, 7, false);
     ToggleButton cubeSensorOverride = new ToggleButton(op, 6, false);
+    Button openLatch = new Button(op, 2);
+    Button engageAuxiliry = new Button(op, 4);
+    double elevatorPowerAnalog() { return op.getRawAxis(1); }
+    double intakeLiftAnalog() { return op.getRawAxis(0); }
 
     Button pullInButton = new Button(driver, 3);
     Button shootFastButton = new Button(driver, 2);
@@ -96,6 +100,18 @@ public class Robot extends TimedRobot {
     double elevatorAnalog() { return driver.getRawAxis(5); }
     boolean climbDisableHold() { return driver.getPOV() == 180; }
 
+    //int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000 };
+    //TODO: otis
+    int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000/*, 30000*/ };
+
+    int elevatorSetpoint = 0;
+    boolean driveForClimb = false;
+    boolean elevatorUpForClimb = false;
+    double climbStartTime;
+    boolean intakeHasCube = false;
+    boolean holdFromAuto = true;
+    CommandSequence.CommandState driveForClimbCommandState;
+
     public void teleopInit() {
         driveSubsystem.shifter.set(DoubleSolenoid.Value.kReverse);
         driveSubsystem.left.shepherd.set(0);
@@ -105,26 +121,12 @@ public class Robot extends TimedRobot {
         driveForClimb = false;
         Button.resetAll();
 
-        /*
-        testCurve = buildProfile(2.5, Arrays.asList(new Vector(0, 0), new Vector(0, 15), new Vector(5, 15)));
-        testCurvei = 0;
-        testCurveStartTime = Timer.getFPGATimestamp();
-        */
+        elevatorSetpoint = 0; //TODO: set this to the setpoint immediately below heightSetpoint
+        holdFromAuto = true;
     }
 
-
-    //int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000 };
-    //TODO: otis
-    int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000, 30000 };
-
-    int elevatorSetpoint = 0;
-    boolean driveForClimb = false;
-    boolean elevatorUpForClimb = false;
-    double climbStartTime;
-    boolean intakeHasCube = false;
-    CommandSequence.CommandState driveForClimbCommandState;
-
     public void teleopPeriodic() {
+        //TODO: clean up the safety logic
         Button.tickAll();
 
         //elevator setpoint up & down buttons
@@ -134,13 +136,24 @@ public class Robot extends TimedRobot {
             elevatorSetpoint--;
         }
 
+        if(upElevatorButton.released || downElevatorButton.released) {
+            holdFromAuto = false;
+        }
+
+        boolean disableLatch = false;
+        boolean holdLiftDown = false;
+
+        boolean bottomSafeZone = (elevatorSetpoint == 0) && (elevatorSubsystem.getHeight() < 10000);
+        boolean topSafeZone = (elevatorSetpoint >= elevatorSetpoints.length - 1) && (elevatorSubsystem.getHeight() > 28000);
+
         //intake states
         if(!climbToggle.state) {
             //TODO: put this on the dpad
             if(elevatorBreakToggle.isDown()) {
                 intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
                 intakeSubsystem.liftUp = true;
-                intakeSubsystem.setIntakePower((intakeSubsystem.getLiftPosition() < -70) ? -1 : 0);
+                disableLatch = true;
+                intakeSubsystem.setIntakePower((intakeSubsystem.getLiftPosition() < -50) ? -0.7 : 0);
             } else if (shootSlowButton.isDown()) {
                 setIntakeState(-0.35, false, false);
             } else if (shootFastButton.isDown()) {
@@ -149,6 +162,8 @@ public class Robot extends TimedRobot {
                 setIntakeState(0.75, false, false);
             } else if (intakeAnalog() > 0.1) {
                 elevatorSetpoint = 0;
+                holdFromAuto = false;
+                holdLiftDown = true;
                 if(intakeSubsystem.hasCube()) {
                     intakeHasCube = true;
                 }
@@ -160,8 +175,11 @@ public class Robot extends TimedRobot {
                 setIntakeState(0, false, false);
             }
 
-            intakeSubsystem.liftUp &= (elevatorSetpoint == 0) && (elevatorSubsystem.getHeight() < 10000);
+            intakeSubsystem.liftUp &= bottomSafeZone || topSafeZone;
         }
+
+        intakeSubsystem.disableLatch = disableLatch;
+        intakeSubsystem.holdLiftDown = holdLiftDown;
 
         //Automated drive back for climb
         if(backForClimbButton.released) {
@@ -170,7 +188,9 @@ public class Robot extends TimedRobot {
         }
 
         //Set height setpoint to setpoint from the array
-        elevatorSubsystem.heightSetpoint = intakeSubsystem.isLiftDown() ? elevatorSetpoints[elevatorSetpoint] : 0;
+        if(!holdFromAuto) {
+            elevatorSubsystem.heightSetpoint = (intakeSubsystem.isLiftDown() || topSafeZone) ? elevatorSetpoints[elevatorSetpoint] : 0;
+        }
 
         //Climb controls
         double driveMultiplier = 1.0;
@@ -221,8 +241,8 @@ public class Robot extends TimedRobot {
 
         //OP override controls (these go last so they overwrite any values above)
         if(elevatorOverride.state) {
-            elevatorSubsystem.shepherd.set(op.getRawAxis(1));
-            elevatorSubsystem.auxiliary.set(op.getRawButton(4) ? op.getRawAxis(1) : 0);
+            elevatorSubsystem.shepherd.set(elevatorPowerAnalog());
+            elevatorSubsystem.auxiliary.set(engageAuxiliry.isDown() ? elevatorPowerAnalog() : 0);
             elevatorSubsystem.periodicEnabled = false;
         }
 
@@ -235,8 +255,8 @@ public class Robot extends TimedRobot {
         */
 
         if(intakeOverride.state) {
-            intakeSubsystem.setLiftPower(op.getRawAxis(2));
-            intakeSubsystem.latch.set(op.getRawButton(2) ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+            intakeSubsystem.setLiftPower(intakeLiftAnalog());
+            intakeSubsystem.latch.set(openLatch.isDown() ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
             intakeSubsystem.periodicEnabled = false;
         } else {
             intakeSubsystem.periodicEnabled = true;
@@ -245,20 +265,25 @@ public class Robot extends TimedRobot {
         intakeSubsystem.cubeSensorEnabled = !cubeSensorOverride.state;
 
         //Teleop status, displayed on the dashboard
-        teleopTable.getEntry("Gear").setString(shiftToggle.state ? "High" : "Low");
-        teleopTable.getEntry("Elevator Setpoint").setString(String.valueOf(elevatorSetpoint)); //TODO: proper names for the setpoints
+        teleopTable.getEntry("Gear").setString(shiftToggle.state ? "Low" : "High");
+        teleopTable.getEntry("Elevator Setpoint").setString(String.valueOf(elevatorSetpoint));
         teleopTable.getEntry("Elevator").setString(elevatorOverride.state ? "Manual" : "Automatic");
         teleopTable.getEntry("Intake").setString(intakeOverride.state ? "Manual" : "Automatic");
         teleopTable.getEntry("Cube Sensor").setString(intakeSubsystem.cubeSensorEnabled ? "Enabled" : "Disabled");
         teleopTable.getEntry("Climb Mode").setString(climbToggle.state ? "Enabled" : "Disabled");
-        teleopTable.getEntry("Driver DPad").setNumber(driver.getPOV());
+        teleopTable.getEntry("Intake Spinning").setBoolean(Math.abs(intakeSubsystem.leftIntake.getMotorOutputPercent()) > 0.1);
+
+        teleopTable.getEntry("Wrist Safe").setBoolean(bottomSafeZone || topSafeZone);
+
+        //teleopTable.getEntry("Driver DPad").setNumber(driver.getPOV());
+        //teleopTable.getEntry("Climb Disable PID DPad").setBoolean(climbDisableHold());
 
         Subsystems.periodic();
     }
 
     public void disabledInit() { }
     public void disabledPeriodic() { }
-
+//hi jon
     @CommandSequence.Logic public boolean leftSwitchOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(0) == 'L'; }
     @CommandSequence.Logic public boolean rightSwitchOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(0) == 'R'; }
     @CommandSequence.Logic public boolean leftScaleOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(1) == 'L'; }

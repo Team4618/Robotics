@@ -24,10 +24,12 @@ public class IntakeSubsystem extends Subsystem {
 
     public boolean cubeSensorEnabled = true;
     public boolean liftUp = false;
+    public boolean disableLatch = false;
+    public boolean holdLiftDown = false;
 
     @Subsystem.ParameterEnum
     public enum Parameters { LiftDown, LiftLow, LiftHigh, LiftUp,
-                             LiftUpPower, LiftDescentPower, LiftReleaseLatchPower, LiftReleaseLatchTime,
+                             LiftUpPower, LiftDescentPower, LiftReleaseLatchPower, LiftReleaseLatchTime, LiftHoldDownPower,
                              ShootTime }
 
     public void init() {
@@ -104,11 +106,11 @@ public class IntakeSubsystem extends Subsystem {
                 liftLatched = true;
             }
 
-            latch.set(DoubleSolenoid.Value.kForward);
+            latch.set(disableLatch ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
             setLiftPower(liftLatched ? 0 : value(LiftUpPower));
         } else {
             if(liftPosition > value(LiftLow)) {
-                setLiftPower(0);
+                setLiftPower(holdLiftDown ? value(LiftHoldDownPower) : 0);
                 liftSittingDown = true;
             } else {
                 setLiftPower((Timer.getFPGATimestamp() - startTime < value(LiftReleaseLatchTime)) ? value(LiftReleaseLatchPower) : value(LiftDescentPower));

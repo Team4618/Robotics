@@ -9,13 +9,11 @@ import javafx.scene.Node;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Label;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BackgroundFill;
-import javafx.scene.layout.CornerRadii;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.json.simple.JSONArray;
@@ -50,7 +48,7 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
         Main.logicTable.addEntryListener((table, key, entry, value, flags) -> resetAutoView(), EntryListenerFlags.kUpdate | EntryListenerFlags.kLocal | EntryListenerFlags.kNew);
 
         currentlyExecuting.setPadding(new Insets(10));
-        currentlyExecuting.setBackground(new Background(new BackgroundFill(Color.color(0, 0, 0, 0.5), new CornerRadii(10), new Insets(5))));
+        currentlyExecuting.setBackground(new Background(new BackgroundFill(Color.WHITE, new CornerRadii(10), new Insets(5))));
         Main.redrawCallbacks.add(this::rebuildCurrentlyExecuting);
         node.getChildren().add(currentlyExecuting);
     }
@@ -159,9 +157,35 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
 
         String mode = Main.mainTable.getEntry("mode").getString("");
         if(mode.equals("Teleop")) {
-            //TODO: improve this
             for(String key : Main.teleopTable.getKeys()) {
-                currentlyExecuting.getChildren().add(new Label(key + ": " + Main.teleopTable.getEntry(key).getString("")));
+                String value = Main.teleopTable.getEntry(key).getString("");
+                Label label;
+
+                if(key.equals("Gear")) {
+                    boolean high = value.equals("High");
+                    label = new Label(high ? "High Gear" : "Low Gear");
+                    label.setTextFill(high ? Color.BLUE : Color.RED);
+                    label.setFont(new Font("Arial", 38));
+                } else if(key.equals("Intake Spinning")) {
+                    boolean spinning = value.equals("true");
+                    label = new Label(spinning ? "Intake Spinning" : "Intake NOT Spinning");
+                    label.setTextFill(spinning ? Color.RED : Color.BLACK);
+                    label.setFont(new Font("Arial", 18));
+                } else {
+                    label = new Label(key + ": " + value);
+                    Color c = Color.BLACK;
+
+                    if(value.equals("Automatic") || value.equals("Enabled")) {
+                        c = Color.BLUE;
+                    } else if(value.equals("Manual") || value.equals("Disabled")) {
+                        c = Color.RED;
+                    }
+
+                    label.setFont(new Font("Arial", 18));
+                    label.setTextFill(c);
+                }
+
+                currentlyExecuting.getChildren().add(label);
             }
         } else if(mode.equals("Autonomous")) {
             if (Main.currentlyExecutingTable.containsKey("Command Name") && Main.currentlyExecutingTable.containsKey("Subsystem Name")) {

@@ -17,6 +17,7 @@ import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
 import team4618.dashboard.Main;
 import team4618.dashboard.autonomous.*;
+import team4618.dashboard.autonomous.DriveCurve.Vector;
 import team4618.dashboard.components.FieldTopdown;
 
 import java.io.File;
@@ -83,7 +84,6 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         return commands;
     }
 
-    //TODO: update with curves
     public static void commandsToPath(List<AutonomousCommand> commands, PathNode startingNode, FieldTopdown field) {
         PathNode currNode = startingNode;
 
@@ -330,8 +330,12 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     }
 
     public static void propagateAndDash(PathNode startingNode, boolean certain) {
+        boolean chosePath = false;
         for(DriveManeuver path : startingNode.outPaths) {
-            boolean pathCertain = certain && (AutonomousCommandTemplate.conditionals.get(path.conditional) == AutonomousCommandTemplate.ConditionalState.True);
+            boolean pathCertain = certain && (AutonomousCommandTemplate.conditionals.get(path.conditional) == AutonomousCommandTemplate.ConditionalState.True) && !chosePath;
+            if(pathCertain)
+                chosePath = true;
+
             path.dashed = !pathCertain;
             propagateAndDash(path.end, pathCertain);
         }
@@ -442,8 +446,16 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     }
 
     public static VBox commandBlock(VBox parent, Node titleBar) { return (VBox) commandBlock(parent, new VBox(), titleBar); }
-
     public static VBox commandBlock(VBox parent, String title) { return commandBlock(parent, new Label(title)); }
+
+    public static class OutPathBlock {
+        public HBox uiBlock;
+        public DriveManeuver path;
+        public OutPathBlock(HBox b, DriveManeuver p) {
+            uiBlock = b;
+            path = p;
+        }
+    }
 
     public static void rebuildEditor() {
         editor.getChildren().clear();
@@ -470,11 +482,50 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             });
             menu.getChildren().add(delete);
 
+            ArrayList<OutPathBlock> outPathBlocks = new ArrayList<>();
             for(DriveManeuver drive : selectedNode.outPaths) {
                 HBox pathBlock = (HBox) commandBlock(editor, new HBox(), new Pane());
                 pathBlock.setOnMouseEntered(evt -> drive.color = Color.PURPLE);
                 pathBlock.setOnMouseExited(evt -> drive.color = Color.BLUE);
-                pathBlock.setOnMouseClicked(evt -> Main.autonomousPage.setSelected(drive));
+
+                pathBlock.setOnMouseReleased(evt -> {
+                    outPathBlocks.forEach(a -> System.out.println(a.path.conditional + " " + a.uiBlock.getTranslateY()));
+                    outPathBlocks.sort((a, b) -> {
+                        double aY = a.uiBlock.getLayoutY() + a.uiBlock.getTranslateY();
+                        double bY = b.uiBlock.getLayoutY() + b.uiBlock.getTranslateY();
+                        return (int)(aY - bY);
+                    });
+                    selectedNode.outPaths = new ArrayList<>();
+                    outPathBlocks.forEach(a -> selectedNode.outPaths.add(a.path));
+                    rebuildEditor();
+                });
+
+                Vector nodeStartingPosition = new Vector(0, 0);
+                Vector lastMousePosition = new Vector(0, 0);
+
+                pathBlock.setOnMousePressed(evt -> {
+                    lastMousePosition.x = evt.getSceneX();
+                    lastMousePosition.y = evt.getSceneY();
+
+                    // get the current coordinates of the draggable node.
+                    nodeStartingPosition.x = pathBlock.getTranslateX();
+                    nodeStartingPosition.y = pathBlock.getTranslateY();
+                });
+
+                pathBlock.setOnMouseDragged(evt -> {
+                    double deltaX = evt.getSceneX() - lastMousePosition.x;
+                    double deltaY = evt.getSceneY() - lastMousePosition.y;
+
+                    // add the delta coordinates to the node coordinates.
+                    nodeStartingPosition.y += deltaY;
+
+                    // set the layout for the draggable node.
+                    pathBlock.setTranslateY(nodeStartingPosition.y);
+
+                    // get the latest mouse coordinate.
+                    lastMousePosition.x = evt.getSceneX();
+                    lastMousePosition.y = evt.getSceneY();
+                });
 
                 ComboBox conditional = new ComboBox(FXCollections.observableArrayList(AutonomousCommandTemplate.conditionals.keySet()));
                 conditional.setValue(drive.conditional);
@@ -486,6 +537,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
 
                 pathBlock.getChildren().addAll(conditional, toggleVisibility);
                 editor.getChildren().add(pathBlock);
+                outPathBlocks.add(new OutPathBlock(pathBlock, drive));
             }
 
             selectedNode.commands.forEach(c -> editor.getChildren().add(c.editorBlock(editor, selectedNode)));

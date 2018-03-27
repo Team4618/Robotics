@@ -93,6 +93,7 @@ public class FieldTopdown extends Canvas {
     }
 
     public void vboxSizing(VBox vb) {
+        //TODO: The 7inch max width isnt very consistant across displays
         vb.widthProperty().addListener((observableValue, oldWidth, newWidth) -> this.setWidth(Math.min(newWidth.doubleValue(), Screen.getPrimary().getDpi() * 7)));
     }
 
