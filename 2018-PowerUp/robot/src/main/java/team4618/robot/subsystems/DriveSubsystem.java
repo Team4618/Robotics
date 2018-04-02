@@ -12,6 +12,7 @@ import team4618.robot.CommandSequence.CommandState;
 import team4618.robot.CurveFollower;
 import team4618.robot.CurveFollower.BezierCurve;
 import team4618.robot.CurveFollower.DifferentialTrajectory;
+import team4618.robot.CurveFollower.SegmentedPath;
 import team4618.robot.CurveFollower.Vector;
 import team4618.robot.Subsystem;
 
@@ -205,7 +206,6 @@ public class DriveSubsystem extends Subsystem {
         return turn_done;
     }
 
-    BezierCurve curve = null;
     ArrayList<DifferentialTrajectory> curveProfile = new ArrayList<>();
     int curvei = 0;
 
@@ -220,21 +220,26 @@ public class DriveSubsystem extends Subsystem {
                 for(int i = 0; i < pointCoords.length; i += 2)
                     points.add(new Vector(pointCoords[i], pointCoords[i + 1]));
 
-                curve = new BezierCurve(points);
-                curveProfile = curve.buildProfile(time);
+                //BezierCurve curve = new BezierCurve(points);
+                //curveProfile = curve.buildProfile(time);
+
+                SegmentedPath path = new SegmentedPath(points);
+                curveProfile = path.buildProfile(3);
+
+                commandState.postState("Generated", Percent, 0);
             } else {
                 System.out.println("Incorrect number of point coordinates: " + pointCoords.length);
                 curveProfile = new ArrayList<>();
             }
         }
 
+        commandState.postState("Generated", Percent, 100);
         boolean running = curvei < curveProfile.size();
 
         if(running) {
             DifferentialTrajectory currTraj = curveProfile.get(curvei);
 
             double angleError = currTraj.angle - (navx.getAngle() + 90);
-            System.out.println(curvei + "/" + curveProfile.size() + " Angle Error: " + angleError + " R " + currTraj.l + " L " + currTraj.r);
 
             left.setSetpoint(currTraj.r);//+ (angleError * 0.01));
             right.setSetpoint(currTraj.l);//- (angleError * 0.01));
@@ -243,11 +248,54 @@ public class DriveSubsystem extends Subsystem {
                 curvei++;
             }
         } else {
-            left.setSetpoint(0);
-            right.setSetpoint(0);
+            //left.setSetpoint(0);
+            //right.setSetpoint(0);
+
+            left.shepherd.set(0);
+            right.shepherd.set(0);
         }
 
         return !running;
+    }
+
+    ArrayList<DifferentialTrajectory> profile;
+    int profilei = 0;
+
+    @Command
+    public boolean driveProfile(CommandState commandState, @Unit(Unitless) double multiplier, double[] rawProfile) {
+        if(commandState.init) {
+            profile = new ArrayList<>();
+            profilei = 0;
+
+            if(rawProfile.length % 3 == 0) {
+                for(int i = 0; i < rawProfile.length; i += 3)
+                    profile.add(new DifferentialTrajectory(rawProfile[i] / multiplier, rawProfile[i + 1] * multiplier, rawProfile[i + 2] * multiplier, 0));
+            }
+        }
+
+        boolean running = profilei < profile.size();
+
+        if(running) {
+            DifferentialTrajectory currTraj = profile.get(profilei);
+
+            left.setSetpoint(currTraj.l);
+            right.setSetpoint(currTraj.r);
+
+            while((profilei < profile.size()) && (commandState.elapsedTime > profile.get(profilei).t)) {
+                profilei++;
+            }
+        } else {
+            //left.shepherd.set(0);
+            //right.shepherd.set(0);
+        }
+
+        return !running;
+    }
+
+    @Command
+    public void hold(CommandState commandState) {
+        left.setSetpoint(0);
+        right.setSetpoint(0);
     }
 
     public String name() { return "Drive"; }

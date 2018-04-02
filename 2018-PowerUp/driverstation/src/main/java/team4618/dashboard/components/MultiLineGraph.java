@@ -47,7 +47,7 @@ public class MultiLineGraph extends VBox {
         public void recalculateRange() {
             minValue = Float.MAX_VALUE;
             maxValue = Float.MIN_VALUE;
-            startIndex = Integer.MAX_VALUE;
+            startIndex = data.size() - 1;
             endIndex = Integer.MIN_VALUE;
 
             for(int i = 0; i < data.size(); i++) {
@@ -59,6 +59,8 @@ public class MultiLineGraph extends VBox {
                     endIndex = Math.max(endIndex, i);
                 }
             }
+
+            System.out.println(toggle.getText() + " " + startIndex + " to " + endIndex);
         }
 
         public double getMinTime() {
@@ -129,6 +131,7 @@ public class MultiLineGraph extends VBox {
 
     boolean automaticMaxTime = true;
 
+    boolean dragging = false;
     public double dragBeginT = 0;
 
     public MultiLineGraph() {
@@ -143,12 +146,19 @@ public class MultiLineGraph extends VBox {
             mouseY = event.getY();
         });
 
-        canvas.setOnMouseClicked(evt -> {
+        canvas.setOnMouseDragged(event -> {
+            mouseX = event.getX();
+            mouseY = event.getY();
+        });
+
+        canvas.setOnMousePressed(evt -> {
+            dragging = true;
             dragBeginT = (evt.getX() / canvas.getWidth()) * (maxTime - minTime) + minTime;
             System.out.println("Click " + dragBeginT);
         });
 
-        canvas.setOnMouseDragReleased(evt -> {
+        canvas.setOnMouseReleased(evt -> {
+            dragging = false;
             minTime = dragBeginT;
             maxTime = (evt.getX() / canvas.getWidth()) * (maxTime - minTime) + minTime;
             automaticMaxTime = false;
@@ -241,6 +251,15 @@ public class MultiLineGraph extends VBox {
 
         if(drawMouse) {
             double mouseT = (mouseX / canvas.getWidth()) * (maxTime - minTime) + minTime;
+
+            if(dragging) {
+                //TODO: fix this
+                gc.setFill(Color.rgb(0, 0, 0, 0.2));
+                double dragBeginX = mapFromTo(dragBeginT, minTime, maxTime, 0, canvas.getWidth());
+
+                gc.fillRect(dragBeginX, 0, 10, canvas.getHeight());
+                gc.fillRect(mouseX, 0, 10, canvas.getHeight());
+            }
 
             int y_count = 0;
             for(Map.Entry<String, Graph> e : graphs.entrySet()) {

@@ -2,6 +2,7 @@ package team4618.robot.subsystems;
 
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
+import com.ctre.phoenix.motorcontrol.can.BaseMotorController;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
@@ -9,16 +10,14 @@ import team4618.robot.Subsystem;
 
 import team4618.robot.CommandSequence.CommandState;
 
-import static team4618.robot.Robot.intakeSubsystem;
 import static team4618.robot.Subsystem.Units.*;
 import static team4618.robot.subsystems.ElevatorSubsystem.Parameters.*;
-import static team4618.robot.subsystems.IntakeSubsystem.Parameters.LiftLow;
 
 public class ElevatorSubsystem extends Subsystem {
 
     public WPI_TalonSRX shepherd = new WPI_TalonSRX(13);
     public WPI_VictorSPX sheep = new WPI_VictorSPX(23);
-    public WPI_VictorSPX auxiliary = new WPI_VictorSPX(14); //TODO: change this to a victor on the comp bot
+    public BaseMotorController auxiliary = new WPI_TalonSRX(14); //TODO: change this to a victor on the comp bot
     public DoubleSolenoid elevatorBrake = new DoubleSolenoid(7, 6);
     public double heightSetpoint = 0;
 

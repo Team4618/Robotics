@@ -17,6 +17,7 @@ import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
 import team4618.dashboard.Main;
 import team4618.dashboard.autonomous.*;
+import team4618.dashboard.autonomous.DriveCurve.DifferentialTrajectory;
 import team4618.dashboard.autonomous.DriveCurve.Vector;
 import team4618.dashboard.components.FieldTopdown;
 
@@ -148,6 +149,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                     currNode.commands.add(command);
                 }
             } else {
+                //TODO: get this to work with curves & recorded paths
                 List<AutonomousCommand> branchCommands = Arrays.asList(command.commands);
                 assert branchCommands.get(0).templateName.equals("Drive:turnToAngle") && branchCommands.get(1).templateName.equals("Drive:driveDistance");
                 AutonomousCommand turnCommand = branchCommands.get(0);
@@ -196,6 +198,11 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     public Button saveCurrentFile = new Button();
     public boolean drawCurves = false;
 
+    public static boolean recording = false;
+    public static List<DifferentialTrajectory> recordedProfile = new ArrayList<>();
+    public static double recordingStartTime = 0;
+    public static int lastMovingTraj = 0;
+
     public AutonomousPage() {
         pathDrawer = new FieldTopdown(this);
         editor = new VBox();
@@ -203,12 +210,46 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         Label pathModeLabel = new Label("Straight Lines");
         pathModeLabel.setTooltip(new Tooltip("S for straight lines, C for curves"));
 
+        Label recordingLabel = new Label("Not Recording");
+
         node.setOnKeyReleased(evt -> {
             if(evt.getCode().equals(KeyCode.S)) {
                 drawCurves = false;
             } else if(evt.getCode().equals(KeyCode.C)) {
                 drawCurves = true;
+            } else if(evt.getCode().equals(KeyCode.R)) {
+                if(!recording) {
+                    recordedProfile.clear();
+                    recordingStartTime = System.currentTimeMillis() / 1000;
+                }
+
+                if(recording && (selected instanceof PathNode)) {
+                    PathNode currNode = (PathNode) selected;
+                    recordedProfile = recordedProfile.subList(0, lastMovingTraj);
+                    for(int j = 0; j < recordedProfile.size(); j += 80) {
+                        double[] rawProfile = new double[80 * 3 + 1];
+                        rawProfile[0] = 1.0;
+                        double timeOffset = recordedProfile.get(j).t;
+                        for (int i = 0; (i < 80) && (i + j < recordedProfile.size()); i++) {
+                            DifferentialTrajectory traj = recordedProfile.get(i + j);
+                            rawProfile[i * 3 + 1] = traj.t - timeOffset;
+                            rawProfile[i * 3 + 2] = traj.l;
+                            rawProfile[i * 3 + 3] = traj.r;
+
+                            System.out.println(i + "/" + recordedProfile.size() + " at " + traj.t);
+                        }
+
+                        AutonomousCommand command = new AutonomousCommand(AutonomousCommandTemplate.templates.get("Drive:driveProfile"));
+                        command.parameterValues = rawProfile;
+                        currNode.commands.add(command);
+                    }
+                    rebuildEditor();
+                }
+
+                recording = !recording;
             }
+
+            recordingLabel.setText(recording ? "Recording" : "Not Recording");
             pathModeLabel.setText(drawCurves ? "Curves" : "Straight Lines");
         });
 
@@ -275,7 +316,11 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         });
 
         Button clear = new Button("Clear");
-        clear.setOnAction(evt -> resetPathDrawer());
+        clear.setOnAction(evt -> {
+            resetPathDrawer();
+            saveCurrentFile.setVisible(false);
+            currentAutoFile = null;
+        });
 
         saveCurrentFile.setVisible(false);
         saveCurrentFile.setOnAction(evt -> {
@@ -302,7 +347,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             }
         });
 
-        buttons.getChildren().addAll(pathModeLabel, upload, download, openFile, saveFile, clear, showAll, saveCurrentFile);
+        buttons.getChildren().addAll(pathModeLabel, recordingLabel, upload, download, openFile, saveFile, clear, showAll, saveCurrentFile);
         buttons.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
         content.getChildren().add(buttons);
 
@@ -457,6 +502,15 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         }
     }
 
+    public static class CommandBlock {
+        public VBox uiBlock;
+        public AutonomousCommand command;
+        public CommandBlock(VBox b, AutonomousCommand c) {
+            uiBlock = b;
+            command = c;
+        }
+    }
+
     public static void rebuildEditor() {
         editor.getChildren().clear();
         AutonomousCommandTemplate.refreshCommandsAndLogic();
@@ -540,7 +594,50 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 outPathBlocks.add(new OutPathBlock(pathBlock, drive));
             }
 
-            selectedNode.commands.forEach(c -> editor.getChildren().add(c.editorBlock(editor, selectedNode)));
+            ArrayList<CommandBlock> commandBlocks = new ArrayList<>();
+            for(AutonomousCommand command : selectedNode.commands) {
+                VBox commandBox = command.editorBlock(editor, selectedNode);
+                editor.getChildren().add(commandBox);
+                commandBlocks.add(new CommandBlock(commandBox, command));
+
+                commandBox.setOnMouseReleased(evt -> {
+                    commandBlocks.sort((a, b) -> {
+                        double aY = a.uiBlock.getLayoutY() + a.uiBlock.getTranslateY();
+                        double bY = b.uiBlock.getLayoutY() + b.uiBlock.getTranslateY();
+                        return (int)(aY - bY);
+                    });
+                    selectedNode.commands = new ArrayList<>();
+                    commandBlocks.forEach(a -> selectedNode.commands.add(a.command));
+                    rebuildEditor();
+                });
+
+                Vector nodeStartingPosition = new Vector(0, 0);
+                Vector lastMousePosition = new Vector(0, 0);
+
+                commandBox.setOnMousePressed(evt -> {
+                    lastMousePosition.x = evt.getSceneX();
+                    lastMousePosition.y = evt.getSceneY();
+
+                    // get the current coordinates of the draggable node.
+                    nodeStartingPosition.x = commandBox.getTranslateX();
+                    nodeStartingPosition.y = commandBox.getTranslateY();
+                });
+
+                commandBox.setOnMouseDragged(evt -> {
+                    double deltaX = evt.getSceneX() - lastMousePosition.x;
+                    double deltaY = evt.getSceneY() - lastMousePosition.y;
+
+                    // add the delta coordinates to the node coordinates.
+                    nodeStartingPosition.y += deltaY;
+
+                    // set the layout for the draggable node.
+                    commandBox.setTranslateY(nodeStartingPosition.y);
+
+                    // get the latest mouse coordinate.
+                    lastMousePosition.x = evt.getSceneX();
+                    lastMousePosition.y = evt.getSceneY();
+                });
+            }
 
             FlowPane addCommand = new FlowPane();
             addCommand.setPadding(new Insets(10));
@@ -597,13 +694,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 timeLabel.setText(curve.time + " seconds");
             });
 
-
-            Slider tHeadingSlider = new Slider(0, 1, curve.tHeading);
-            tHeadingSlider.valueProperty().addListener(l -> {
-                curve.tHeading = tHeadingSlider.getValue();
-            });
-
-            editor.getChildren().addAll(addControlPoint, timeSlider, timeLabel, tHeadingSlider);
+            editor.getChildren().addAll(addControlPoint, timeSlider, timeLabel);
         }
     }
 
@@ -627,5 +718,6 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     static {
         blacklistedCommands.add("Drive:driveDistance");
         blacklistedCommands.add("Drive:driveCurve");
+        blacklistedCommands.add("Drive:driveProfile");
     }
 }

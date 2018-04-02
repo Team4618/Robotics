@@ -3,11 +3,19 @@ package team4618.dashboard.pages;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.layout.VBox;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 import team4618.dashboard.Main;
+import team4618.dashboard.autonomous.DriveCurve;
 import team4618.dashboard.components.Compass;
 import team4618.dashboard.components.MultiLineGraph;
 import team4618.dashboard.components.ParameterTextbox;
+
+import java.io.FileWriter;
+import java.util.ArrayList;
+
 import static team4618.dashboard.components.MultiLineGraph.*;
 
 public class SubsystemPage extends DashboardPage {
@@ -16,6 +24,7 @@ public class SubsystemPage extends DashboardPage {
 
     MultiLineGraph graph = new MultiLineGraph();
     Compass compass = new Compass();
+    ToggleButton recording = new ToggleButton("Recording");
 
     Main.Subsystem subsystem;
 
@@ -23,13 +32,13 @@ public class SubsystemPage extends DashboardPage {
         subsystem = inSubsystem;
         node.setContent(content);
 
-        content.getChildren().addAll(graph, compass);
+        content.getChildren().addAll(graph, compass, recording);
 
         for(String param : subsystem.parameterTable.getKeys()) {
             content.getChildren().add(new ParameterTextbox(subsystem.parameterTable.getEntry(param)));
         }
 
-        Main.redrawCallbacks.add(this::onJavafxLoop);
+        //Main.redrawCallbacks.add(this::onJavafxLoop);
     }
 
     public void onJavafxLoop() {
@@ -46,12 +55,12 @@ public class SubsystemPage extends DashboardPage {
                         compass.setAngle(value);
                     }
                 } else {
-                    //graph.addData(state, unit, value, time);
+                    graph.addData(state, unit, value, time);
                 }
             }
         }
 
-        //graph.draw();
+        graph.draw();
     }
 
     public void setPageSelected(boolean selected) { }

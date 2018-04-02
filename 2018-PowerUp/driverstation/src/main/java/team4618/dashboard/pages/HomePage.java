@@ -22,6 +22,8 @@ import org.json.simple.JSONValue;
 import team4618.dashboard.Main;
 import team4618.dashboard.autonomous.AutonomousCommand;
 import team4618.dashboard.autonomous.AutonomousCommandTemplate;
+import team4618.dashboard.autonomous.DriveCurve;
+import team4618.dashboard.autonomous.DriveCurve.DifferentialTrajectory;
 import team4618.dashboard.autonomous.PathNode;
 import team4618.dashboard.components.FieldTopdown;
 
@@ -107,7 +109,7 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    public class RobotPosition extends FieldTopdown.Drawable {
+    public static class RobotPosition extends FieldTopdown.Drawable {
         double time;
         double angle;
 
@@ -137,17 +139,33 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     }
 
     public void updateLiveView() {
+        double time = System.currentTimeMillis() / 1000.0;
+
         if(currentPosition != null) {
             double speed = 12 * Main.subsystems.get("Drive").stateTable.getEntry("Speed_Value").getDouble(0);
             double angle = Main.subsystems.get("Drive").stateTable.getEntry("Angle_Value").getDouble(0);
-            double time = System.currentTimeMillis() / 1000.0;
             double deltat = time - currentPosition.time;
             RobotPosition newPos = new RobotPosition(currentPosition.x + speed * deltat * Math.cos(Math.toRadians(angle)),
                                                      currentPosition.y + speed * deltat * Math.sin(Math.toRadians(angle)), time, angle);
+
             //TODO: set this threshold (currently at 2 inches)
             /*if(Math.sqrt(Math.pow(currentPosition.x - newPos.x, 2) + Math.pow(currentPosition.y - newPos.y, 2)) < 2)*/ {
                 currentPosition = newPos;
                 liveFieldView.overlay.add(newPos);
+            }
+        }
+
+        if(AutonomousPage.recording) {
+            double leftSpeed = Main.subsystems.get("Drive").stateTable.getEntry("Left Speed_Value").getDouble(0);
+            double rightSpeed = Main.subsystems.get("Drive").stateTable.getEntry("Right Speed_Value").getDouble(0);
+            boolean moving = (Math.abs(leftSpeed) > 0.1) || (Math.abs(leftSpeed) > 0.1);
+
+            if(moving || (AutonomousPage.recordedProfile.size() > 0)) {
+                AutonomousPage.recordedProfile.add(new DifferentialTrajectory(time - AutonomousPage.recordingStartTime, leftSpeed, rightSpeed, 0));
+
+                if(moving) {
+                    AutonomousPage.lastMovingTraj = AutonomousPage.recordedProfile.size();
+                }
             }
         }
     }

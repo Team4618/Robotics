@@ -42,6 +42,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
     public static class Subsystem {
         public static class CommandParam { public String name; public String unit; }
 
+        public String name;
         public NetworkTable table;
         public NetworkTable parameterTable;
         public NetworkTable stateTable;
@@ -49,6 +50,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
         public HashMap<String, CommandParam[]> commands = new HashMap<>();
 
         public Subsystem(String name) {
+            this.name = name;
             table = network.getTable("Custom Dashboard/Subsystem/" + name);
             parameterTable = network.getTable("Custom Dashboard/Subsystem/" + name + "/Parameters");
             stateTable = network.getTable("Custom Dashboard/Subsystem/" + name + "/State");
@@ -93,8 +95,8 @@ public class Main extends Application implements Consumer<ConnectionNotification
     @Override
     public void start(Stage window) {
         network = NetworkTableInstance.getDefault();
-        //network.setServerTeam(4618);
-        network.setServer("localhost");
+        network.setServerTeam(4618);
+        //network.setServer("localhost");
         network.startClient();
         mainTable = network.getTable("Custom Dashboard");
         subsystemTable = network.getTable("Custom Dashboard/Subsystem");

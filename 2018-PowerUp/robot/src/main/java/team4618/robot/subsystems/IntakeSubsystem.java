@@ -2,6 +2,7 @@ package team4618.robot.subsystems;
 
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
 import edu.wpi.first.wpilibj.*;
+import org.opencv.core.Mat;
 import team4618.robot.CommandSequence.CommandState;
 import team4618.robot.Subsystem;
 
@@ -12,44 +13,38 @@ import static team4618.robot.subsystems.IntakeSubsystem.Parameters.*;
 public class IntakeSubsystem extends Subsystem {
 
     public DoubleSolenoid arms = new DoubleSolenoid(2, 3);
-    public DoubleSolenoid latch = new DoubleSolenoid(4, 5);
 
-    public Encoder liftEncoder = new Encoder(0, 1);
-    public WPI_VictorSPX leftLift = new WPI_VictorSPX(33);
-    public WPI_VictorSPX rightLift = new WPI_VictorSPX(24);
+    public Encoder wristEncoder = new Encoder(0, 1);
+    public WPI_VictorSPX wrist = new WPI_VictorSPX(33);
 
     public WPI_VictorSPX leftIntake = new WPI_VictorSPX(15);
     public WPI_VictorSPX rightIntake = new WPI_VictorSPX(25);
     public DigitalInput cubeSensor = new DigitalInput(2);
 
     public boolean cubeSensorEnabled = true;
-    public boolean liftUp = false;
-    public boolean disableLatch = false;
-    public boolean holdLiftDown = false;
+    public double wristSetpoint = 0;
 
     @Subsystem.ParameterEnum
-    public enum Parameters { LiftDown, LiftLow, LiftHigh, LiftUp,
-                             LiftUpPower, LiftDescentPower, LiftReleaseLatchPower, LiftReleaseLatchTime, LiftHoldDownPower,
+    public enum Parameters { WristDown, WristUp, WristShoot,
+                             WristUpPower, WristDownPower,
+                             WristElevatorSafe, WristHalf, WristCalibrate, WristSlop,
                              ShootTime }
 
-    public void init() {
-
-    }
+    public void init() { }
 
     public void postState() {
-        PostState("Lift Raw Encoder", Unitless, liftEncoder.get());
-        PostState("Lift Position", Unitless, getLiftPosition());
-        PostState("Lift Power", Percent, leftLift.getMotorOutputPercent());
+        PostState("Wrist Raw Encoder", Unitless, wristEncoder.get());
+        PostState("Wrist Position", Unitless, getWristPosition());
+        PostState("Wrist Power", Percent, wrist.getMotorOutputPercent());
         PostState("Cube Sensor", Percent, cubeSensor.get() ? 1 : 0);
     }
 
-    public double getLiftPosition() {
-        return liftEncoder.get() + (-156);
-    }
+    public void setWristUp() { wristSetpoint = value(WristUp); }
+    public void setWristDown() { wristSetpoint = value(WristDown); }
+    public void setWristShoot() { wristSetpoint = value(WristShoot); }
 
-    public void setLiftPower(double value) {
-        leftLift.set(-value);
-        rightLift.set(value);
+    public double getWristPosition() {
+        return wristEncoder.get() + value(WristCalibrate);
     }
 
     //NOTE: intake is positive, shoot is negative
@@ -62,24 +57,47 @@ public class IntakeSubsystem extends Subsystem {
         return !cubeSensor.get() && cubeSensorEnabled;
     }
 
-    public boolean isLiftDown() {
-        return getLiftPosition() > value(LiftLow);
+    public boolean isElevatorSafe() {
+        return getWristPosition() > value(WristElevatorSafe);
+    }
+    public boolean wristAtSetpoint() { return Math.abs(getWristPosition() - wristSetpoint) < value(WristSlop); }
+
+    @Command
+    public void setWristShootPosition(CommandState state) {
+        setWristShoot();
     }
 
-    public boolean isLiftUp() {
-        return getLiftPosition() < value(LiftHigh);
+    @Command
+    public void setWristDownPosition(CommandState state) {
+        setWristDown();
+    }
+
+    @Command
+    public boolean waitForWristSetpoint(CommandState state) {
+        return wristAtSetpoint();
     }
 
     @Command
     public void openIntake(CommandState state) {
-        setIntakePower(0.75);
         arms.set(DoubleSolenoid.Value.kReverse);
+        setIntakePower(hasCube() ? 0 : 0.75);
     }
 
+    public double automaticIntakeTimer = 0;
     @Command
-    public void closeIntake(CommandState state) {
-        setIntakePower(0);
-        arms.set(DoubleSolenoid.Value.kForward);
+    public boolean closeIntake(CommandState state) {
+        if(hasCube() && (automaticIntakeTimer == 0)) {
+            automaticIntakeTimer = state.elapsedTime;
+        }
+
+        boolean done = (state.elapsedTime - automaticIntakeTimer > 0.35) || (state.elapsedTime > 4.0);
+
+        if(done) {
+            setIntakePower(0);
+            arms.set(DoubleSolenoid.Value.kForward);
+        }
+
+        return done;
     }
 
     @Command
@@ -90,56 +108,25 @@ public class IntakeSubsystem extends Subsystem {
         return isDone;
     }
 
-    boolean wasUp = false;
-    double startTime = 0;
-
-    public boolean liftSittingDown = false;
-    public boolean liftLatched = false;
-
     public void periodic() {
-        //TODO: clean this up
-        //it doesnt latch down at the start of auto or teleop, relying on the movement of the robot jigging it loose, fix this
-
-        double liftPosition = getLiftPosition();
-        if(liftUp) {
-            if(liftPosition < value(LiftHigh)) {
-                liftLatched = true;
-            }
-
-            latch.set(disableLatch ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
-            setLiftPower(liftLatched ? 0 : value(LiftUpPower));
-        } else {
-            if(liftPosition > value(LiftLow)) {
-                setLiftPower(holdLiftDown ? value(LiftHoldDownPower) : 0);
-                liftSittingDown = true;
-            } else {
-                setLiftPower((Timer.getFPGATimestamp() - startTime < value(LiftReleaseLatchTime)) ? value(LiftReleaseLatchPower) : value(LiftDescentPower));
-            }
-
-            latch.set(liftSittingDown ? DoubleSolenoid.Value.kForward : DoubleSolenoid.Value.kReverse);
+        double wristPosition = getWristPosition();
+        double power = 0;
+        if(Math.abs(wristSetpoint - wristPosition) < value(WristSlop)) {
+            power = 0;
+        } else if(wristPosition < wristSetpoint) {
+            power = value(WristDownPower);
+        } else if(wristPosition > wristSetpoint) {
+            power = value(WristUpPower);
         }
+        wrist.set(power);
 
         /*
-        if(liftPosition < value(LiftLow)) {
-            liftLatched = false;
+        if(wristSetpoint < value(WristHalf)) {
+            wrist.set(liftPosition > wristSetpoint ? value(WristUpPower) : 0);
+        } else {
+            wrist.set(liftPosition < wristSetpoint ? value(WristDownPower) : 0);
         }
         */
-
-        if(liftPosition < value(LiftHigh)) {
-            liftSittingDown = false;
-        }
-
-        if(wasUp != liftUp) {
-            if(liftUp)
-                liftLatched = false;
-
-            startTime = Timer.getFPGATimestamp();
-            System.out.println("Changing state");
-        }
-        wasUp = liftUp;
-
-        //System.out.println("Latched " + liftLatched + " Sitting Down " + liftSittingDown);
-        //System.out.println("Elapsed: " + (Timer.getFPGATimestamp() - startTime));
     }
 
     public String name() { return "Intake"; }
