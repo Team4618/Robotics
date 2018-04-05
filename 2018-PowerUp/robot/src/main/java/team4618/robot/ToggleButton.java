@@ -3,8 +3,8 @@ package team4618.robot;
 import edu.wpi.first.wpilibj.Joystick;
 
 public class ToggleButton extends Button {
-    boolean defaultState;
-    boolean state;
+    public boolean defaultState;
+    public boolean state;
 
     public ToggleButton(Joystick joystick, int buttonIndex, boolean defaultState) {
         super(joystick, buttonIndex);
