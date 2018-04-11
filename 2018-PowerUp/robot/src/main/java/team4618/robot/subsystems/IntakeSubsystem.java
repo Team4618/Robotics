@@ -25,10 +25,11 @@ public class IntakeSubsystem extends Subsystem {
 
     public boolean cubeSensorEnabled = true;
     public double wristSetpoint = 0;
+    public boolean slowWrist = true;
 
     @Subsystem.ParameterEnum
     public enum Parameters { WristDown, WristUp, WristShoot,
-                             WristUpPower, WristDownPower, WristHoldPower,
+                             WristUpPower, WristDownPower, WristHoldPower, WristUpSlowPower, WristDownSlowPower,
                              WristElevatorSafe, WristHalf, WristCalibrate, WristSlop,
                              WristP, WristI, WristD,
                              ShootTime }
@@ -69,6 +70,9 @@ public class IntakeSubsystem extends Subsystem {
     public boolean isElevatorSafe() {
         return getWristPosition() > value(WristElevatorSafe);
     }
+    public boolean isWristDown() {
+        return Math.abs(getWristPosition() - value(WristDown)) < value(WristSlop);
+    }
     public boolean wristAtSetpoint() { return Math.abs(getWristPosition() - wristSetpoint) < value(WristSlop); }
 
     @Command
@@ -87,9 +91,10 @@ public class IntakeSubsystem extends Subsystem {
     }
 
     @Command
-    public void openIntake(CommandState state) {
+    public boolean openIntake(CommandState state) {
         arms.set(DoubleSolenoid.Value.kReverse);
-        setIntakePower(hasCube() ? 0 : 0.75);
+        setIntakePower((state.elapsedTime < 0.5) || hasCube() ? 0 : 0.75);
+        return state.elapsedTime > 0.5;
     }
 
     public double automaticIntakeTimer = 0;
@@ -133,10 +138,10 @@ public class IntakeSubsystem extends Subsystem {
             //wristPID.enable();
         } else if(wristPosition < wristSetpoint) {
             //wristPID.disable();
-            wristPower = value(WristDownPower);
+            wristPower = slowWrist ? value(WristDownSlowPower) : value(WristDownPower);
         } else if(wristPosition > wristSetpoint) {
             //wristPID.disable();
-            wristPower = value(WristUpPower);
+            wristPower = slowWrist ? value(WristUpSlowPower) : value(WristUpPower);
         }
 
         boolean latchUp = true;

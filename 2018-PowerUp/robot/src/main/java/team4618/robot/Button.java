@@ -11,6 +11,7 @@ public class Button {
     int buttonIndex;
     boolean wasDown = false;
     boolean released = false;
+    boolean pressBegin = false;
 
     public Button(Joystick joystick, int buttonIndex) {
         this.joystick = joystick;
@@ -24,7 +25,9 @@ public class Button {
 
     public void tick() {
         released = wasDown && !isDown();
+        pressBegin = !wasDown && isDown();
         wasDown = isDown();
+
     }
 
     public void reset() {}

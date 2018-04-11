@@ -1,6 +1,9 @@
 package team4618.robot;
 
 import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.can.VictorSPX;
+import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
+import edu.wpi.cscore.UsbCamera;
 import edu.wpi.first.wpilibj.*;
 import team4618.robot.subsystems.DriveSubsystem;
 import team4618.robot.subsystems.ElevatorSubsystem;
@@ -18,13 +21,23 @@ public class Robot extends TimedRobot {
     public static IntakeSubsystem intakeSubsystem = new IntakeSubsystem();
 
     CommandSequence autoProgram;
+    UsbCamera camera;
 
     public void robotInit() {
         //TODO: switch name for different bots
         CommandSequence.init(this, "Shopping Cart");
         autoProgram = new CommandSequence(CommandSequence.table.getSubTable("Executing"));
         Subsystems.init();
+
+        /*
+        camera = CameraServer.getInstance().startAutomaticCapture();
+        camera.setResolution(640, 480);
+        camera.setFPS(8);
+        camera.setExposureManual(100);
+        */
     }
+
+    WPI_VictorSPX ledController = new WPI_VictorSPX(33);
 
     public void robotPeriodic() {
         Subsystems.postState();
@@ -40,6 +53,8 @@ public class Robot extends TimedRobot {
         if(op.getRawButton(9)) {
             intakeSubsystem.wristEncoder.reset();
         }
+
+        ledController.set(intakeSubsystem.hasCube() ? 1 : 0);
     }
 
     public void autonomousInit() {
@@ -54,6 +69,7 @@ public class Robot extends TimedRobot {
         intakeSubsystem.wasLatchUp = false;
         intakeSubsystem.setWristDown();
         intakeSubsystem.setIntakePower(0);
+        intakeSubsystem.slowWrist = true;
         elevatorSubsystem.heightSetpoint = 0;
 
         driveSubsystem.navx.reset();
@@ -82,8 +98,10 @@ public class Robot extends TimedRobot {
     ToggleButton elevatorOverride = new ToggleButton(op, 10, false);
     public static ToggleButton intakeOverride = new ToggleButton(op, 7, false);
     ToggleButton cubeSensorOverride = new ToggleButton(op, 6, false);
+    Button angleWrist = new Button(op, 11);
     Button openLatch = new Button(op, 2);
     Button wristUp = new Button(op, 3);
+    Button placeCube = new Button(op, 5);
     Button engageAuxiliary = new Button(op, 4);
     double elevatorPowerAnalog() { return op.getRawAxis(1); }
     double intakeLiftAnalog() { return op.getRawAxis(0); }
@@ -104,14 +122,17 @@ public class Robot extends TimedRobot {
 
     //int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000 };
     //TODO: otis
-    int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000, 31000 };
+    int[] elevatorSetpoints = new int[]{ 0, 5000, 13000, 26000, 29000, 30000/*31000*/};
 
     int elevatorSetpoint = 0;
     boolean driveForClimb = false;
     boolean elevatorUpForClimb = false;
+    boolean wristDisabledForClimb = false;
     double climbStartTime;
     boolean intakeHasCube = false;
     boolean holdFromAuto = true;
+    boolean wasIntaking = false;
+    double intakeStartTime = 0;
     CommandSequence.CommandState driveForClimbCommandState;
 
     public void teleopInit() {
@@ -120,6 +141,7 @@ public class Robot extends TimedRobot {
         driveSubsystem.right.shepherd.set(0);
 
         intakeSubsystem.setWristDown();
+        intakeSubsystem.slowWrist = false;
         driveForClimb = false;
         Button.resetAll();
 
@@ -145,9 +167,24 @@ public class Robot extends TimedRobot {
         boolean bottomSafeZone = (elevatorSetpoint == 0) && (elevatorSubsystem.getHeight() < 10000);
         boolean topSafeZone = (elevatorSetpoint >= elevatorSetpoints.length - 1) && (elevatorSubsystem.getHeight() > 28000);
 
+        double wristAngleSetpoint = -40;
+
         //intake states
         if(!climbToggle.state) {
-            if (pullInButton.isDown()) {
+            if(placeCube.isDown()) {
+                /*if(angleWrist.isDown()) {
+                    intakeSubsystem.setIntakePower(0);
+                    intakeSubsystem.wristSetpoint = wristAngleSetpoint;
+                    intakeSubsystem.arms.set(intakeSubsystem.wristAtSetpoint() ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
+                } else*/ {
+                    setIntakeState(0, intakeSubsystem.isWristDown(), false);
+                }
+
+                //setIntakeState(0, intakeSubsystem.isWristDown(), false);
+            } else if(pullInButton.isDown()) {
+                //intakeSubsystem.setIntakePower(0.75);
+                //intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+
                 setIntakeState(0.75, false, false);
             } else if(wristUp.isDown()) {
                 setIntakeState(0, false, true);
@@ -155,26 +192,59 @@ public class Robot extends TimedRobot {
                 //TODO: put this on the dpad
                 intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
                 intakeSubsystem.setWristShoot();
-                intakeSubsystem.setIntakePower(intakeSubsystem.wristAtSetpoint() ? -0.7 : 0);
+                intakeSubsystem.setIntakePower(intakeSubsystem.wristAtSetpoint() ? /*-0.7*/ -1 : 0);
             } else if (shootSlowButton.isDown()) {
+                /*
+                intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+                if(angleWrist.isDown()) {
+                    intakeSubsystem.wristSetpoint = wristAngleSetpoint;
+                } else {
+                    intakeSubsystem.setWristDown();
+                }
+                intakeSubsystem.setIntakePower(intakeSubsystem.wristAtSetpoint() ? -0.35 : 0);
+                */
+
                 setIntakeState(-0.35, false, false);
             } else if (shootFastButton.isDown()) {
+                /*
+                intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+                if(angleWrist.isDown()) {
+                    intakeSubsystem.wristSetpoint = wristAngleSetpoint;
+                } else {
+                    intakeSubsystem.setWristDown();
+                }
+                intakeSubsystem.setIntakePower(intakeSubsystem.wristAtSetpoint() ? -1 : 0);
+                */
+
                 setIntakeState(-1, false, false);
             } else if (intakeAnalog() > 0.1) {
+                if(!wasIntaking) {
+                    intakeStartTime = Timer.getFPGATimestamp();
+                }
+
                 elevatorSetpoint = 0;
                 holdFromAuto = false;
+                wasIntaking = true;
                 if(intakeSubsystem.hasCube()) {
                     intakeHasCube = true;
                 }
-                setIntakeState(intakeHasCube ? 0 : 0.75, !intakeHasCube, false);
+                setIntakeState(intakeHasCube || ((Timer.getFPGATimestamp() - intakeStartTime) < 0.5) ? 0 : 0.75, !intakeHasCube, false);
             } else if(liftDownAnalog() > 0.1){
                 setIntakeState(0, false, true);
             } else {
                 intakeHasCube = false;
-                setIntakeState(0, false, false);
+                wasIntaking = false;
+                /*
+                if(angleWrist.isDown()) {
+                    intakeSubsystem.setIntakePower(0);
+                    intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
+                    intakeSubsystem.wristSetpoint = wristAngleSetpoint;
+                } else*/ {
+                    setIntakeState(0, false, false);
+                }
             }
 
-            if(!bottomSafeZone && !topSafeZone) {
+            if((!bottomSafeZone && !topSafeZone) && !elevatorBreakToggle.isDown()) {
                 intakeSubsystem.setWristDown();
             }
         }
@@ -187,7 +257,7 @@ public class Robot extends TimedRobot {
 
         //Set height setpoint to setpoint from the array
         if(!holdFromAuto) {
-            elevatorSubsystem.heightSetpoint = (intakeSubsystem.isElevatorSafe() || topSafeZone) ? elevatorSetpoints[elevatorSetpoint] : 0;
+            elevatorSubsystem.heightSetpoint = (intakeSubsystem.isElevatorSafe() || topSafeZone || bottomSafeZone) ? elevatorSetpoints[elevatorSetpoint] : elevatorSubsystem.getHeight();
         }
 
         //Climb controls
@@ -196,6 +266,7 @@ public class Robot extends TimedRobot {
             if(climbToggle.released) {
                 elevatorBreakToggle.reset();
                 elevatorUpForClimb = true;
+                wristDisabledForClimb = false;
                 climbStartTime = Timer.getFPGATimestamp();
             }
 
@@ -207,8 +278,12 @@ public class Robot extends TimedRobot {
             intakeSubsystem.setIntakePower(timeElapsed < 0.5 ? -1 : 0);
             intakeSubsystem.setWristUp();
             intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
-            double climbSetpoint = elevatorSetpoints[elevatorSetpoints.length - 1];
+            double climbSetpoint = 29300; //elevatorSetpoints[elevatorSetpoints.length - 1];
             elevatorSubsystem.heightSetpoint = intakeSubsystem.wristAtSetpoint() ? climbSetpoint : 0;
+
+            if(intakeSubsystem.wristAtSetpoint()) {
+                wristDisabledForClimb = true;
+            }
 
             if(elevatorSubsystem.isAt(climbSetpoint) && ((elevatorPower < -0.15) || climbDisableHold())) {
                 elevatorUpForClimb = false;
@@ -220,10 +295,16 @@ public class Robot extends TimedRobot {
                 elevatorSubsystem.shepherd.set(elevatorPower);
                 elevatorSubsystem.auxiliary.set(ControlMode.PercentOutput, elevatorStalling ? 0 : elevatorPower);
             }
+
+            if(wristDisabledForClimb) {
+                intakeSubsystem.wrist.set(0);
+            }
         }
 
         elevatorSubsystem.periodicEnabled = !climbToggle.state || (climbToggle.state && elevatorUpForClimb);
         elevatorSubsystem.elevatorBrake.set((climbToggle.state && elevatorBreakToggle.state) ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
+
+        intakeSubsystem.periodicEnabled = !climbToggle.state || (climbToggle.state && !wristDisabledForClimb);
 
         //drive controls
         if(driveForClimb) {
@@ -255,8 +336,6 @@ public class Robot extends TimedRobot {
             intakeSubsystem.wrist.set(wristPower);
             intakeSubsystem.latch.set(openLatch.isDown() ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
             intakeSubsystem.periodicEnabled = false;
-        } else {
-            intakeSubsystem.periodicEnabled = true;
         }
 
         intakeSubsystem.cubeSensorEnabled = !cubeSensorOverride.state;
