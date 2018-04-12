@@ -17,7 +17,7 @@ public class ElevatorSubsystem extends Subsystem {
 
     public WPI_TalonSRX shepherd = new WPI_TalonSRX(13);
     public WPI_VictorSPX sheep = new WPI_VictorSPX(23);
-    public BaseMotorController auxiliary = new WPI_TalonSRX(14); //TODO: change this to a victor on the comp bot
+    public BaseMotorController auxiliary = new WPI_VictorSPX(14); //TODO: change this to a victor on the comp bot
     public DoubleSolenoid elevatorBrake = new DoubleSolenoid(7, 6);
     public double heightSetpoint = 0;
 

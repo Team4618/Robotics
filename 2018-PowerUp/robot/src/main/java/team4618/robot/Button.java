@@ -3,24 +3,27 @@ package team4618.robot;
 import edu.wpi.first.wpilibj.Joystick;
 
 import java.util.ArrayList;
+import java.util.function.Supplier;
 
 public class Button {
     public static ArrayList<Button> buttons = new ArrayList<>();
 
-    Joystick joystick;
-    int buttonIndex;
     boolean wasDown = false;
     boolean released = false;
     boolean pressBegin = false;
+    Supplier<Boolean> down;
 
     public Button(Joystick joystick, int buttonIndex) {
-        this.joystick = joystick;
-        this.buttonIndex = buttonIndex;
+        this(() -> joystick.getRawButton(buttonIndex));
+    }
+
+    public Button(Supplier<Boolean> isDown) {
+        this.down = isDown;
         buttons.add(this);
     }
 
     public boolean isDown() {
-        return joystick.getRawButton(buttonIndex);
+        return down.get();
     }
 
     public void tick() {

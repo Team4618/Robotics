@@ -135,6 +135,7 @@ public class DriveSubsystem extends Subsystem {
     }
 
     double startDriveAngle = 0;
+    int stalledCounter = 0;
 
     @Command
     public boolean driveDistance(CommandState commandState, @Unit(Feet) double distance, @Unit(FeetPerSecond) double maxSpeed,
@@ -158,11 +159,16 @@ public class DriveSubsystem extends Subsystem {
         commandState.postState("Left Remaining", Feet, Math.abs(distance) - leftDistance);
         commandState.postState("Right Remaining", Feet, Math.abs(distance) - rightDistance);
 
-        //TODO: i think we tripped this accelerating, test it, maybe we want a timer on this
-        boolean stalled = (left.shepherd.getOutputCurrent() > 50) && (right.shepherd.getOutputCurrent() > 50);
+        boolean stalled = (left.shepherd.getOutputCurrent() > 40) && (right.shepherd.getOutputCurrent() > 40);
+        if(stalled) {
+            stalledCounter++;
+        } else {
+            stalledCounter = 0;
+        }
+
         boolean left_done = ((Math.abs(distance) - leftDistance) < value(DistanceSlop)) && (Math.abs(left.getRate()) < value(DistanceRateSlop));
         boolean right_done = ((Math.abs(distance) - rightDistance) < value(DistanceSlop)) && (Math.abs(right.getRate()) < value(DistanceRateSlop));
-        boolean done = (left_done && right_done) || stalled;
+        boolean done = (left_done && right_done) || (stalledCounter >= 30);
 
         if(done)
             resetPID();
