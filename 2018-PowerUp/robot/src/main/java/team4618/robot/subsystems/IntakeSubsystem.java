@@ -1,6 +1,7 @@
 package team4618.robot.subsystems;
 
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
+import edu.wpi.cscore.UsbCamera;
 import edu.wpi.first.wpilibj.*;
 import team4618.robot.CommandSequence.CommandState;
 import team4618.robot.Robot;
@@ -22,6 +23,8 @@ public class IntakeSubsystem extends Subsystem {
     public WPI_VictorSPX rightIntake = new WPI_VictorSPX(25);
     public DigitalInput cubeSensor = new DigitalInput(2);
 
+    public UsbCamera camera;
+
     public boolean cubeSensorEnabled = true;
     public double wristSetpoint = 0;
     public boolean slowWrist = true;
@@ -30,11 +33,19 @@ public class IntakeSubsystem extends Subsystem {
     @Subsystem.ParameterEnum
     public enum Parameters { WristDown, WristUp, WristShoot,
                              WristUpPower, WristDownPower, WristHoldPower, WristUpSlowPower, WristDownSlowPower,
-                             WristElevatorSafe, WristHalf, WristCalibrate, WristSlop,
-                             ShootTime }
+                             WristElevatorSafe, WristCalibrate, WristSlop,
+                             ShootTime,
+                             CameraExposure }
+
+    public void updateParameters() { camera.setExposureManual((int) value(CameraExposure)); }
 
     public void init() {
         wristEncoder.setPIDSourceType(PIDSourceType.kRate);
+
+        camera = CameraServer.getInstance().startAutomaticCapture();
+        camera.setResolution(640, 480);
+        camera.setFPS(30);
+        camera.setExposureManual(100);
     }
 
     public void postState() {
@@ -65,9 +76,7 @@ public class IntakeSubsystem extends Subsystem {
     public boolean isElevatorSafe() {
         return getWristPosition() > value(WristElevatorSafe);
     }
-    public boolean isWristDown() {
-        return Math.abs(getWristPosition() - value(WristDown)) < value(WristSlop);
-    }
+    public boolean isWristDown() { return Math.abs(getWristPosition() - value(WristDown)) < value(WristSlop); }
     public boolean isWristShoot() {
         return Math.abs(getWristPosition() - value(WristShoot)) < value(WristSlop);
     }
@@ -133,8 +142,8 @@ public class IntakeSubsystem extends Subsystem {
     public void periodic() {
         double wristPosition = getWristPosition();
 
-        double wristPower = 0;
         if(!hitSetpoint || !disableWhenSetpointReached) {
+            double wristPower = 0;
             if (Math.abs(wristSetpoint - wristPosition) < value(WristSlop)) {
                 boolean topOrBottom = (wristPosition > -20) || (wristPosition < -165);
                 wristPower = topOrBottom ? 0 : value(WristHoldPower);
@@ -145,28 +154,30 @@ public class IntakeSubsystem extends Subsystem {
             } else if (wristPosition > wristSetpoint) {
                 wristPower = slowWrist ? value(WristUpSlowPower) : value(WristUpPower);
             }
+
+            /*
+            boolean latchUp = true;
+            if(wristSetpoint <= value(WristUp)) {
+                latchUp = false;
+            }
+            latch.set(latchUp ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
+
+            if(latchUp && !wasLatchUp) {
+                latchTimer = Timer.getFPGATimestamp();
+                System.out.print("Set timer ");
+            }
+            wasLatchUp = latchUp;
+
+            if(latchUp && (Timer.getFPGATimestamp() - latchTimer < 0.5)) {
+                wristPower = -0.2; //value(WristHoldPower);
+                System.out.println(Timer.getFPGATimestamp() - latchTimer);
+            }
+            */
+
+            wrist.set(wristPower);
         }
 
-        /*
-        boolean latchUp = true;
-        if(wristSetpoint <= value(WristUp)) {
-            latchUp = false;
-        }
-        latch.set(latchUp ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
 
-        if(latchUp && !wasLatchUp) {
-            latchTimer = Timer.getFPGATimestamp();
-            System.out.print("Set timer ");
-        }
-        wasLatchUp = latchUp;
-
-        if(latchUp && (Timer.getFPGATimestamp() - latchTimer < 0.5)) {
-            wristPower = -0.2; //value(WristHoldPower);
-            System.out.println(Timer.getFPGATimestamp() - latchTimer);
-        }
-        */
-
-        wrist.set(wristPower);
 
         if((lastWristPosition == wristPosition) && (Math.abs(wrist.getMotorOutputPercent()) > 0.15)) {
             timeoutCounter++;
@@ -180,14 +191,6 @@ public class IntakeSubsystem extends Subsystem {
             //TODO: fix this so I dont have to set the override toggle directly, itd be nice if i could just say periodicEnabled = false
             Robot.intakeOverride.state = true;
         }
-
-        /*
-        if(wristSetpoint < value(WristHalf)) {
-            wrist.set(liftPosition > wristSetpoint ? value(WristUpPower) : 0);
-        } else {
-            wrist.set(liftPosition < wristSetpoint ? value(WristDownPower) : 0);
-        }
-        */
     }
 
     public String name() { return "Intake"; }

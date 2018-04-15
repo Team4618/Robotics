@@ -87,6 +87,7 @@ public class DriveCurve extends DriveManeuver {
         }
     }
 
+    //TODO: left & right speeds & positions
     public static class DifferentialTrajectory {
         public double t, l, r, angle;
         public DifferentialTrajectory (double t, double l, double r, double angle) {
@@ -156,6 +157,7 @@ public class DriveCurve extends DriveManeuver {
 
                 double dtheta = 0;
                 if(t > 0) {
+                    //TODO: why are we using the last position for the dtheta, we use the next for the heading
                     Vector lp = positionAt(nominalSpeed * (t - dt));
                     Vector lasth = new Vector((p.x - lp.x) / dt, (p.y - lp.y) / dt);
 

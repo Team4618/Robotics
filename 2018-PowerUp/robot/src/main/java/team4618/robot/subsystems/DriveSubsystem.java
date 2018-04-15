@@ -37,7 +37,8 @@ public class DriveSubsystem extends Subsystem {
         public DriveSide(int shepherd_can_id, int sheep_can_id, boolean flipDirection) {
             shepherd = new WPI_TalonSRX(shepherd_can_id);
             sheep = new WPI_VictorSPX(sheep_can_id);
-            sheep.follow(shepherd);
+            //TODO: i dont like this
+            //sheep.follow(shepherd);
             shepherd.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, 0);
             this.flipDirection = flipDirection;
         }
@@ -303,6 +304,19 @@ public class DriveSubsystem extends Subsystem {
     public void hold(CommandState commandState) {
         left.setSetpoint(0);
         right.setSetpoint(0);
+    }
+
+    @Command
+    public boolean wait(CommandState commandState, @Unit(Seconds) double duration) {
+        left.setSetpoint(0);
+        right.setSetpoint(0);
+        return commandState.elapsedTime >= duration;
+    }
+
+    public void periodic() {
+        //TODO: follow mode broke for some reason
+        left.sheep.set(left.shepherd.getMotorOutputPercent());
+        right.sheep.set(right.shepherd.getMotorOutputPercent());
     }
 
     public String name() { return "Drive"; }

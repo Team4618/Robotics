@@ -26,7 +26,8 @@ public class ElevatorSubsystem extends Subsystem {
         shepherd.configPeakOutputForward(1, 0);
         shepherd.configPeakOutputReverse(-1 /*0.35*/, 0);
 
-        sheep.follow(shepherd);
+        //TODO i dont like this
+        //sheep.follow(shepherd);
 
         shepherd.setSensorPhase(true);
         shepherd.setInverted(true);
@@ -110,6 +111,9 @@ public class ElevatorSubsystem extends Subsystem {
 
             setSpeedSetpoint(speed);
         }
+
+        //TODO: i dont like this
+        sheep.set(shepherd.getMotorOutputPercent());
     }
 
     public String name() { return "Elevator"; }
