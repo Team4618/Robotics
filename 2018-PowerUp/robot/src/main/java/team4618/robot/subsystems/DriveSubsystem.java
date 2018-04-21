@@ -9,10 +9,8 @@ import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 
 import team4618.robot.CommandSequence.CommandState;
-import team4618.robot.CurveFollower.DifferentialTrajectory;
-import team4618.robot.CurveFollower.SegmentedPath;
-import team4618.robot.CurveFollower.Vector;
-import team4618.robot.PositionProvider;
+import team4618.robot.CurveFollower.*;
+import team4618.robot.RobotPosition.PositionProvider;
 import team4618.robot.RobotPosition;
 import team4618.robot.Subsystem;
 
@@ -245,48 +243,44 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
         return turn_done;
     }
 
-    ArrayList<DifferentialTrajectory> curveProfile = new ArrayList<>();
-    int curvei = 0;
+    DifferentialProfile curveProfile;
+
+    public void calculateCurve(double tAccel, double tDeccel,
+                               double speed, double[] pointCoords) {
+        if(pointCoords.length % 2 == 0) {
+            ArrayList<Vector> points = new ArrayList<>();
+            points.add(new Vector(0, 0));
+            for(int i = 0; i < pointCoords.length; i += 2)
+                points.add(new Vector(pointCoords[i], pointCoords[i + 1]));
+
+            SegmentedPath path = new SegmentedPath(points);
+            System.out.println("Beginning calculation");
+            curveProfile = path.buildProfile(tAccel, tDeccel, Math.abs(speed), speed < 0);
+            System.out.println("Done calculation");
+        } else {
+            System.out.println("Incorrect number of point coordinates: " + pointCoords.length);
+        }
+    }
 
     @Command
     public boolean driveCurve(CommandState commandState, @Unit(Seconds) double tAccel, @Unit(Seconds) double tDeccel,
                                                          @Unit(FeetPerSecond) double speed, double[] pointCoords) {
         if(commandState.init) {
-            curvei = 0;
-
-            if(pointCoords.length % 2 == 0) {
-                ArrayList<Vector> points = new ArrayList<>();
-                points.add(new Vector(0, 0));
-                for(int i = 0; i < pointCoords.length; i += 2)
-                    points.add(new Vector(pointCoords[i], pointCoords[i + 1]));
-
-                SegmentedPath path = new SegmentedPath(points);
-                System.out.println("Beginning calculation");
-                curveProfile = path.buildProfile(tAccel, tDeccel, Math.abs(speed), speed < 0);
-                System.out.println("Done calculation");
-            } else {
-                System.out.println("Incorrect number of point coordinates: " + pointCoords.length);
-                curveProfile = new ArrayList<>();
-            }
+            calculateCurve(tAccel, tDeccel, speed, pointCoords);
 
             commandState.startTime = Timer.getFPGATimestamp();
             resetPID();
             setPositionPID();
         }
 
-        boolean running = curvei < curveProfile.size();
+        boolean running = commandState.elapsedTime < curveProfile.length();
         commandState.postState("Time", Seconds, commandState.elapsedTime);
-        commandState.postState("Trajectory i", Unitless, curvei);
 
         if(running) {
-            DifferentialTrajectory currTraj = curveProfile.get(curvei);
+            DifferentialTrajectory currTraj = curveProfile.getTrajectoryAt(commandState.elapsedTime);
 
             left.setPositionSetpoint(currTraj.pr);
             right.setPositionSetpoint(currTraj.pl);
-
-            while((curvei < curveProfile.size()) && (commandState.elapsedTime > curveProfile.get(curvei).t)) {
-                curvei++;
-            }
         }
 
         return !running;

@@ -13,6 +13,7 @@ import team4618.dashboard.components.MultiLineGraph;
 import team4618.dashboard.pages.HomePage.RobotPosition;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
 
 import static team4618.dashboard.components.MultiLineGraph.Units.*;
@@ -27,8 +28,8 @@ public class RobotPage extends DashboardPage {
     VBox node = new VBox();
     FieldTopdown simulationField = new FieldTopdown();
 
-    public ArrayList<DifferentialTrajectory> getProfile() {
-        ArrayList<DifferentialTrajectory> profile = new ArrayList<>();
+    public DriveCurve.DifferentialProfile getProfile() {
+        DriveCurve.DifferentialProfile profile = new DriveCurve.DifferentialProfile(new DifferentialTrajectory[0], 0.1);
 
         if(AutonomousPage.selected instanceof DriveCurve) {
             DriveCurve driveCurve = (DriveCurve) AutonomousPage.selected;
@@ -59,7 +60,7 @@ public class RobotPage extends DashboardPage {
             }
             */
 
-            getProfile().forEach(traj -> {
+            Arrays.asList(getProfile().profile).forEach(traj -> {
                 testGraph.addData("Angle", Degrees, traj.angle, traj.t);
                 testGraph.addData("Left Velocity", FeetPerSecond, traj.vl, traj.t);
                 testGraph.addData("Left Position", Feet, traj.pl, traj.t);
@@ -83,10 +84,9 @@ public class RobotPage extends DashboardPage {
         });
 
         simulateProfile.setOnAction(evt -> {
-            ArrayList<DifferentialTrajectory> curveProfile = getProfile();
+            DriveCurve.DifferentialProfile curveProfile = getProfile();
 
             simulationField.overlay.clear();
-            int curvei = 0;
             double elapsedTime = 0;
             double dt = 0.005;
             double pl = 0;
@@ -98,8 +98,8 @@ public class RobotPage extends DashboardPage {
                 pos = new RobotPosition(((DriveCurve) AutonomousPage.selected).beginning.x, ((DriveCurve) AutonomousPage.selected).beginning.y, 0, 0);
             simulationField.overlay.add(pos);
 
-            while(curvei < curveProfile.size()) {
-                DifferentialTrajectory currTraj = curveProfile.get(curvei);
+            while(elapsedTime <= curveProfile.length()) {
+                DifferentialTrajectory currTraj = curveProfile.getTrajectoryAt(elapsedTime);
 
                 double rSpeed = currTraj.vr + pidJitter.getValue() * (rng.nextBoolean() ? -1 : 1) * rng.nextDouble();
                 double lSpeed = currTraj.vl + pidJitter.getValue() * (rng.nextBoolean() ? -1 : 1) * rng.nextDouble();
@@ -119,10 +119,6 @@ public class RobotPage extends DashboardPage {
                                         pos.y + speed * dt * Math.sin(angle), elapsedTime, Math.toDegrees(angle));
                 simulationField.overlay.add(pos);
 
-                //TODO: replace this with an array lookup, floor & ceil the time to get 2 indices and lerp between them
-                while ((curvei < curveProfile.size()) && (elapsedTime > curveProfile.get(curvei).t)) {
-                    curvei++;
-                }
                 elapsedTime += dt;
             }
         });

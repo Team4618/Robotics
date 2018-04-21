@@ -79,6 +79,26 @@ public class DriveCurve extends DriveManeuver {
         }
     }
 
+    public static class DifferentialProfile {
+        public DifferentialTrajectory[] profile;
+        public double dt;
+
+        public DifferentialProfile(DifferentialTrajectory[] profile, double dt) {
+            this.profile = profile;
+            this.dt = dt;
+        }
+
+        public DifferentialTrajectory getTrajectoryAt(double t) {
+            int i = (int)(t / dt);
+            i = Math.max(0, Math.min(i, profile.length));
+            return profile[i];
+        }
+
+        public double length() {
+            return dt * profile.length;
+        }
+    }
+
     public static class LineSegment {
         public Vector a, b;
         public LineSegment(Vector start, Vector end) { a = start; b = end; }
@@ -150,8 +170,7 @@ public class DriveCurve extends DriveManeuver {
             return currResult;
         }
 
-        public ArrayList<DifferentialTrajectory> buildProfile(double tAccel, double tDeccel, double nominalSpeed, boolean backwards) {
-            ArrayList<DifferentialTrajectory> result = new ArrayList<>();
+        public DifferentialProfile buildProfile(double tAccel, double tDeccel, double nominalSpeed, boolean backwards) {
             double wheelbase = 26.5 / 12.0;
             double dt = 0.01;
 
@@ -161,7 +180,12 @@ public class DriveCurve extends DriveManeuver {
 
             double tTotal = profileTime(tAccel, tDeccel, length, nominalSpeed);
             Vector lp = null;
-            for(double t = 0; distance <= length; t += dt) {
+            System.out.println(tTotal / dt + " slices");
+            int slices = (int)Math.ceil(tTotal / dt);
+            DifferentialTrajectory[] samples = new DifferentialTrajectory[slices];
+
+            for(int i = 0; i < slices; i++) {
+                double t = dt * i;
                 double speed = trapazoidalProfile(t, tAccel, tDeccel, length, nominalSpeed);
                 Vector p = positionAt(distance);
                 Vector pn = positionAt(distance + speed * dt);
@@ -170,22 +194,32 @@ public class DriveCurve extends DriveManeuver {
                 double dtheta = 0;
                 if(lp != null) {
                     Vector lasth = new Vector((p.x - lp.x) / dt, (p.y - lp.y) / dt);
-                    dtheta = (h.angle() - lasth.angle()) / dt;
+                    double htheta = h.angle();
+                    double ltheta = lasth.angle();
+                    dtheta = (htheta - ltheta) / dt;
+
+                    double dtheta_ppi = (htheta - (ltheta + 2 * Math.PI)) / dt;
+                    if(Math.abs(dtheta_ppi) < Math.abs(dtheta))
+                        dtheta = dtheta_ppi;
+
+                    double dtheta_npi = (htheta - (ltheta - 2 * Math.PI)) / dt;
+                    if(Math.abs(dtheta_npi) < Math.abs(dtheta))
+                        dtheta = dtheta_npi;
                 }
 
-                System.out.println("s " + h.length() + " a =" + dtheta + " @ t%=" + (t/tTotal) + " d%=" + (distance/length));
+                System.out.println("s=" + h.length() + " a=" + dtheta + " @ t%=" + (t/tTotal) + " d%=" + (distance/length) + " i=" + i);
 
-                double vl = (backwards ? -1 : 1) * (0.5) * (2 * h.length() - wheelbase * dtheta);
+                double vl = (0.5) * (2 * (backwards ? -1 : 1) * h.length() - wheelbase * dtheta);
                 pl += vl * dt;
-                double vr = (backwards ? -1 : 1) * (0.5) * (2 * h.length() + wheelbase * dtheta);
+                double vr = (0.5) * (2 * (backwards ? -1 : 1) * h.length() + wheelbase * dtheta);
                 pr += vr * dt;
                 distance += speed * dt;
                 if(speed != 0)
                     lp = p;
-                result.add(new DifferentialTrajectory(t, vl, pl, vr, pr, Math.toDegrees(h.angle())));
+                samples[i] = new DifferentialTrajectory(t, vl, pl, vr, pr, Math.toDegrees(h.angle()));
             }
 
-            return result;
+            return new DifferentialProfile(samples, dt);
         }
     }
 

@@ -22,16 +22,20 @@ public class Robot extends TimedRobot {
     public static ElevatorSubsystem elevatorSubsystem = new ElevatorSubsystem();
     public static IntakeSubsystem intakeSubsystem = new IntakeSubsystem();
 
-    CommandSequence autoProgram;
+    public static CommandSequence autoProgram;
+
+    public static final String name = "Shopping Cart";
 
     public void robotInit() {
         //TODO: switch name for different bots
-        CommandSequence.init(this, "Shopping Cart");
+        CommandSequence.init(this, name);
         autoProgram = new CommandSequence(CommandSequence.table.getSubTable("Executing"));
         Subsystems.init();
 
         ledOutput = new DigitalOutput(3);
         lastTime = Timer.getFPGATimestamp();
+
+        Network.init();
     }
 
     WPI_VictorSPX ledController = new WPI_VictorSPX(33);
@@ -75,7 +79,9 @@ public class Robot extends TimedRobot {
 
         driveSubsystem.shifter.set(DoubleSolenoid.Value.kReverse);
         driveSubsystem.left.shepherd.set(0);
+        driveSubsystem.left.sheep.set(0);
         driveSubsystem.right.shepherd.set(0);
+        driveSubsystem.right.sheep.set(0);
         intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
         intakeSubsystem.disableWhenSetpointReached = false;
         intakeSubsystem.setWristDown();
@@ -138,7 +144,9 @@ public class Robot extends TimedRobot {
     public void teleopInit() {
         driveSubsystem.shifter.set(DoubleSolenoid.Value.kReverse);
         driveSubsystem.left.shepherd.set(0);
+        driveSubsystem.left.sheep.set(0);
         driveSubsystem.right.shepherd.set(0);
+        driveSubsystem.right.sheep.set(0);
 
         intakeSubsystem.setWristDown();
         intakeSubsystem.slowWrist = false;

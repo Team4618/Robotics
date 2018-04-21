@@ -19,13 +19,18 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
 import team4618.dashboard.components.MultiLineGraph;
 import team4618.dashboard.pages.*;
 
-import java.net.DatagramSocket;
-import java.net.Socket;
+import java.net.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 public class Main extends Application implements Consumer<ConnectionNotification> {
@@ -81,9 +86,6 @@ public class Main extends Application implements Consumer<ConnectionNotification
         }
     }
 
-    public static Socket commPort;
-    public static DatagramSocket statePort;
-
     public static HashMap<String, Subsystem> subsystems = new HashMap<>();
 
     public static ArrayList<Runnable> redrawCallbacks = new ArrayList<>();
@@ -97,19 +99,58 @@ public class Main extends Application implements Consumer<ConnectionNotification
 
     public static AutonomousPage autonomousPage;
 
+    public static SocketAddress robotAddress = new InetSocketAddress("10.46.18.2", 5801);
+    public static DatagramChannel channel;
+    public static Thread netThread = new Thread(Main::networkTick);
+    public static ConcurrentLinkedQueue<ByteBuffer> sendQueue = new ConcurrentLinkedQueue<>();
+    public static void networkTick() {
+        while(true) {
+            try {
+                //Handle & respond to incoming packets
+                boolean hasPackets = true;
+                ByteBuffer buffer = ByteBuffer.allocate(16384);
+
+                while (hasPackets) {
+                    buffer.clear();
+                    SocketAddress sender = channel.receive(buffer);
+                    if (sender == null) {
+                        hasPackets = false;
+                    } else {
+                        byte[] data = new byte[buffer.position()];
+                        buffer.position(0);
+                        buffer.get(data);
+
+                        String message = new String(data, Charset.forName("UTF-8"));
+                        JSONObject json = (JSONObject) JSONValue.parseWithException(message);
+                        System.out.println(message);
+                    }
+                }
+
+                while(sendQueue.peek() != null) {
+                    ByteBuffer data = sendQueue.poll();
+                    System.out.println(new String(data.array(), Charset.forName("UTF-8")));
+                    channel.send(data, robotAddress);
+                }
+
+                Thread.sleep(100);
+            } catch (Exception e) { e.printStackTrace(); }
+        }
+    }
+
     @Override
     public void start(Stage window) {
         //TODO: new networking
-        /*
         try {
-            commPort = new Socket("roboRIO-4618-FRC.lan", 5082);
-            statePort = new DatagramSocket();
+            channel = DatagramChannel.open();
+            channel.configureBlocking(false);
 
-            statePort.getPort();
+            JSONObject connectPacket = new JSONObject();
+            connectPacket.put("Type", "Connect");
+            connectPacket.put("State", true);
 
-
+            channel.send(ByteBuffer.wrap(connectPacket.toString().getBytes(Charset.forName("UTF-8"))), robotAddress);
+            netThread.start();
         } catch(Exception e) { e.printStackTrace(); }
-        */
 
         network = NetworkTableInstance.getDefault();
         network.setServerTeam(4618);

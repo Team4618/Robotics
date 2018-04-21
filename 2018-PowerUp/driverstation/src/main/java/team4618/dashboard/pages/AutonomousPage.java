@@ -25,6 +25,8 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -255,7 +257,20 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         });
 
         Button upload = new Button("Upload");
-        upload.setOnAction(evt -> uploadCommands(getCommandList()));
+        upload.setOnAction(evt -> {
+            uploadCommands(getCommandList());
+
+            JSONObject rootObject = new JSONObject();
+            rootObject.put("Type", "SetAuto");
+            JSONArray rootCommandArray = new JSONArray();
+            rootObject.put("Commands", rootCommandArray);
+            getCommandList().forEach(c -> rootCommandArray.add(c.toJSON()));
+            try {
+                String packet = rootObject.toString();
+                System.out.println(packet);
+                Main.sendQueue.add(ByteBuffer.wrap(packet.getBytes(Charset.forName("UTF-8"))));
+            } catch (Exception e) { e.printStackTrace(); }
+        });
         Button download = new Button("Download");
         download.setOnAction(evt -> {
             resetPathDrawer();

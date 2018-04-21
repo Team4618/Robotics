@@ -7,9 +7,19 @@ public class CurveFollower {
 
     public static class Vector {
         public double x, y;
-        public Vector(double x, double y) { this.x = x; this.y = y; }
-        public double length() { return Math.sqrt(x * x + y * y); }
-        public double angle() { return Math.atan2(y, x); }
+
+        public Vector(double x, double y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        public double length() {
+            return Math.sqrt(x * x + y * y);
+        }
+
+        public double angle() {
+            return Math.atan2(y, x);
+        }
     }
 
     public static class QuadraticBezierCurve {
@@ -32,7 +42,7 @@ public class CurveFollower {
             ArrayList<LineSegment> result = new ArrayList<>();
             double ds = 0.0001; //this creates approx 10000 segments, thats too many
 
-            for(double s = 0; s <= 1.0 - ds; s += ds) {
+            for (double s = 0; s <= 1.0 - ds; s += ds) {
                 Vector a = position(s);
                 Vector b = position(s + ds);
 
@@ -55,27 +65,59 @@ public class CurveFollower {
         }
     }
 
-    public static class LineSegment {
-        public Vector a, b;
-        public LineSegment(Vector start, Vector end) { a = start; b = end; }
+    public static class DifferentialProfile {
+        public DifferentialTrajectory[] profile;
+        public double dt;
 
-        public double length() { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
-        public Vector lerp(double s) { return new Vector((1 - s) * a.x + s * b.x, (1 - s) * a.y + s * b.y); }
+        public DifferentialProfile(DifferentialTrajectory[] profile, double dt) {
+            this.profile = profile;
+            this.dt = dt;
+        }
+
+        public DifferentialTrajectory getTrajectoryAt(double t) {
+            int i = (int) (t / dt);
+            i = Math.max(0, Math.min(i, profile.length));
+            return profile[i];
+        }
+
+        public double length() {
+            return dt * profile.length;
+        }
     }
 
-    public static double lerp(double a, double t, double b) { return (1 - t) * a + t * b; }
+    public static class LineSegment {
+        public Vector a, b;
+
+        public LineSegment(Vector start, Vector end) {
+            a = start;
+            b = end;
+        }
+
+        public double length() {
+            return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
+        }
+
+        public Vector lerp(double s) {
+            return new Vector((1 - s) * a.x + s * b.x, (1 - s) * a.y + s * b.y);
+        }
+    }
+
+    public static double lerp(double a, double t, double b) {
+        return (1 - t) * a + t * b;
+    }
 
     public static double profileTime(double tAccel, double tDeccel, double distance, double speed) {
         return (distance / speed) + 0.5 * (tAccel + tDeccel);
     }
+
     public static double trapazoidalProfile(double t, double tAccel, double tDeccel, double distance, double speed) {
         double tTotal = profileTime(tAccel, tDeccel, distance, speed);
         double deccelTime = tTotal - tDeccel;
 
         //TODO: use smoothstep instead of lerp, rewrite profileTime when we change lerp out
-        if(t >= deccelTime) {
+        if (t >= deccelTime) {
             return lerp(speed, (t - deccelTime) / tDeccel, 0);
-        } else if(t <= tAccel) {
+        } else if (t <= tAccel) {
             return lerp(0, t / tAccel, speed);
         }
 
@@ -100,7 +142,7 @@ public class CurveFollower {
 
             segments.addAll(new QuadraticBezierCurve(points.get(i), points.get(i + 1), points.get(i + 2)).toSegments());
 
-            for(LineSegment segment : segments) {
+            for (LineSegment segment : segments) {
                 length += segment.length();
             }
         }
@@ -111,10 +153,10 @@ public class CurveFollower {
 
             double currLength = 0;
             Vector currResult = segments.get(0).a;
-            for(int i = 0; i < segments.size(); i++) {
+            for (int i = 0; i < segments.size(); i++) {
                 LineSegment segment = segments.get(i);
 
-                if((currLength <= d) && (d < (currLength + segment.length()))) {
+                if ((currLength <= d) && (d < (currLength + segment.length()))) {
                     double remainingDistance = d - currLength;
                     return segment.lerp(remainingDistance / segment.length());
                 }
@@ -126,8 +168,7 @@ public class CurveFollower {
             return currResult;
         }
 
-        public ArrayList<DifferentialTrajectory> buildProfile(double tAccel, double tDeccel, double nominalSpeed, boolean backwards) {
-            ArrayList<DifferentialTrajectory> result = new ArrayList<>();
+        public DifferentialProfile buildProfile(double tAccel, double tDeccel, double nominalSpeed, boolean backwards) {
             double wheelbase = 26.5 / 12.0;
             double dt = 0.01;
 
@@ -137,30 +178,46 @@ public class CurveFollower {
 
             double tTotal = profileTime(tAccel, tDeccel, length, nominalSpeed);
             Vector lp = null;
-            for(double t = 0; distance <= length; t += dt) {
+            System.out.println(tTotal / dt + " slices");
+            int slices = (int)Math.ceil(tTotal / dt);
+            DifferentialTrajectory[] samples = new DifferentialTrajectory[slices];
+
+            for (int i = 0; i < slices; i++) {
+                double t = dt * i;
                 double speed = trapazoidalProfile(t, tAccel, tDeccel, length, nominalSpeed);
                 Vector p = positionAt(distance);
                 Vector pn = positionAt(distance + speed * dt);
                 Vector h = new Vector((pn.x - p.x) / dt, (pn.y - p.y) / dt);
 
                 double dtheta = 0;
-                if(lp != null) {
+                if (lp != null) {
                     Vector lasth = new Vector((p.x - lp.x) / dt, (p.y - lp.y) / dt);
-                    dtheta = (h.angle() - lasth.angle()) / dt;
+                    double htheta = h.angle();
+                    double ltheta = lasth.angle();
+                    dtheta = (htheta - ltheta) / dt;
+
+                    double dtheta_ppi = (htheta - (ltheta + 2 * Math.PI)) / dt;
+                    if(Math.abs(dtheta_ppi) < Math.abs(dtheta))
+                        dtheta = dtheta_ppi;
+
+                    double dtheta_npi = (htheta - (ltheta - 2 * Math.PI)) / dt;
+                    if(Math.abs(dtheta_npi) < Math.abs(dtheta))
+                        dtheta = dtheta_npi;
                 }
 
-                System.out.println("s " + h.length() + " a =" + dtheta + " @ t%=" + (t/tTotal) + " d%=" + (distance/length));
+                System.out.println("s=" + h.length() + " a=" + dtheta + " @ t%=" + (t / tTotal) + " d%=" + (distance / length));
 
-                double vl = (backwards ? -1 : 1) * (0.5) * (2 * h.length() - wheelbase * dtheta);
+                double vl = (0.5) * (2 * (backwards ? -1 : 1) * h.length() - wheelbase * dtheta);
                 pl += vl * dt;
-                double vr = (backwards ? -1 : 1) * (0.5) * (2 * h.length() + wheelbase * dtheta);
+                double vr = (0.5) * (2 * (backwards ? -1 : 1) * h.length() + wheelbase * dtheta);
                 pr += vr * dt;
                 distance += speed * dt;
-                lp = p;
-                result.add(new DifferentialTrajectory(t, vl, pl, vr, pr, Math.toDegrees(h.angle())));
+                if (speed != 0)
+                    lp = p;
+                samples[i] = new DifferentialTrajectory(t, vl, pl, vr, pr, Math.toDegrees(h.angle()));
             }
 
-            return result;
+            return new DifferentialProfile(samples, dt);
         }
     }
 }

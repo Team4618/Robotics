@@ -37,7 +37,7 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     VBox currentlyExecuting = new VBox();
 
     public static FieldTopdown.StartingPosition startingPos;
-    public static RobotPosition currentPosition = new RobotPosition(0, 0, 0, 0);
+    public static RobotPosition currentPosition;
 
     public HomePage() {
         liveFieldView = new FieldTopdown(this);

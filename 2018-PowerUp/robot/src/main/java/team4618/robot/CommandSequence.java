@@ -3,6 +3,8 @@ package team4618.robot;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -116,14 +118,39 @@ public class CommandSequence {
 
             if(currCommandTable.containsKey("Subsystem Name") && currCommandTable.containsKey("Command Name") && currCommandTable.containsKey("Params")) {
                 this.addCommand(currCommandTable.getEntry("Subsystem Name").getString(""),
-                                currCommandTable.getEntry("Command Name").getString(""),
-                                currCommandTable.getEntry("Params").getDoubleArray(new double[0]));
+                        currCommandTable.getEntry("Command Name").getString(""),
+                        currCommandTable.getEntry("Params").getDoubleArray(new double[0]));
             } else if(currCommandTable.containsKey("Conditional") && currCommandTable.containsSubTable("commands") && !choseConditional) {
                 boolean condition = logicTable.getEntry(currCommandTable.getEntry("Conditional").getString("")).getString("").equals("True");
                 System.out.println(currCommandTable.getEntry("Conditional").getString("") + " " + condition);
                 if(condition) {
                     choseConditional = true;
                     loadCommandsFromTable(currCommandTable.getSubTable("commands"));
+                }
+            }
+        }
+    }
+
+    public void loadCommandsFromJSON(JSONArray commands) {
+        boolean choseConditional = false;
+        for(Object obj : commands) {
+            JSONObject command = (JSONObject) obj;
+
+            if(command.containsKey("Subsystem Name") && command.containsKey("Command Name") && command.containsKey("Params")) {
+                JSONArray jsonParams = (JSONArray) command.get("Params");
+                double[] params = new double[jsonParams.size()];
+                for(int i = 0; i < params.length; i++)
+                    params[i] = (double) jsonParams.get(i);
+                this.addCommand((String) command.get("Subsystem Name"),
+                                (String) command.get("Command Name"),
+                                params);
+            } else if(command.containsKey("Conditional") && command.containsKey("Commands") && !choseConditional) {
+                //TODO: conditions are always going to be false right now
+                boolean condition = logicTable.getEntry((String) command.get("Conditional")).getString("").equals("True");
+                System.out.println(command.get("Conditional") + " " + condition);
+                if(condition) {
+                    choseConditional = true;
+                    loadCommandsFromJSON((JSONArray) command.get("Commands"));
                 }
             }
         }

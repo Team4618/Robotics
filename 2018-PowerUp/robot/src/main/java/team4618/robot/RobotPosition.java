@@ -8,4 +8,8 @@ public class RobotPosition {
         this.y = y;
         this.angle = a;
     }
+
+    public interface PositionProvider {
+        RobotPosition getPosition(RobotPosition prevPos, double dt);
+    }
 }
