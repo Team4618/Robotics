@@ -119,18 +119,19 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                     }
                 } else if(command.templateName.equals("Drive:driveCurve")) {
                     if(lastAngle != null) {
-                        double time = command.parameterValues[0];
-
                         double endX = currNode.x + command.parameterValues[command.parameterValues.length - 2] * 12;
                         double endY = currNode.y + command.parameterValues[command.parameterValues.length - 1] * 12;
 
                         PathNode newNode = new PathNode(endX, endY);
 
-                        //TODO: is backwards
+                        double speed = command.parameterValues[2];
                         DriveCurve newDrive = new DriveCurve(currNode, newNode);
-                        newDrive.time = time;
+                        newDrive.accelTime = command.parameterValues[0];
+                        newDrive.deccelTime = command.parameterValues[1];
+                        newDrive.speed = Math.abs(speed);
+                        newDrive.backwards = speed < 0;
 
-                        for(int i = 1; i < command.parameterValues.length - 2; i += 2) {
+                        for(int i = 3; i < command.parameterValues.length - 2; i += 2) {
                             DriveCurve.ControlPoint c = new DriveCurve.ControlPoint(currNode.x + command.parameterValues[i] * 12, currNode.y + command.parameterValues[i + 1] * 12);
                             newDrive.controlPoints.add(c);
                             field.overlay.add(c);
@@ -233,8 +234,8 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                         for (int i = 0; (i < 80) && (i + j < recordedProfile.size()); i++) {
                             DifferentialTrajectory traj = recordedProfile.get(i + j);
                             rawProfile[i * 3 + 1] = traj.t - timeOffset;
-                            rawProfile[i * 3 + 2] = traj.l;
-                            rawProfile[i * 3 + 3] = traj.r;
+                            rawProfile[i * 3 + 2] = traj.vl;
+                            rawProfile[i * 3 + 3] = traj.vr;
 
                             System.out.println(i + "/" + recordedProfile.size() + " at " + traj.t);
                         }
@@ -273,8 +274,8 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 fileChooser.setTitle("Open Auto File");
 
                 currentAutoFile = fileChooser.showOpenDialog(new Stage());
-                saveCurrentFile.setVisible(true);
                 saveCurrentFile.setText("Save " + currentAutoFile.getName());
+                saveCurrentFile.setVisible(true);
 
                 FileReader reader = new FileReader(currentAutoFile);
                 JSONObject rootObject = (JSONObject) JSONValue.parseWithException(reader);
@@ -686,15 +687,22 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 curve.controlPoints.add(c);
                 pathDrawer.overlay.add(c);
             });
+            editor.getChildren().addAll(addControlPoint);
 
-            Slider timeSlider = new Slider(0, 40, curve.time);
-            Label timeLabel = new Label(curve.time + " seconds");
-            timeSlider.valueProperty().addListener(l -> {
-                curve.time = timeSlider.getValue();
-                timeLabel.setText(curve.time + " seconds");
+            ToggleButton backwardsToggle = new ToggleButton("Backwards");
+            backwardsToggle.setSelected(curve.backwards);
+            backwardsToggle.selectedProperty().addListener(evt -> {
+                curve.backwards = backwardsToggle.isSelected();
             });
+            editor.getChildren().add(backwardsToggle);
 
-            editor.getChildren().addAll(addControlPoint, timeSlider, timeLabel);
+            addParameterSlider(0, 5, () -> curve.accelTime,
+                                s -> curve.accelTime = s, "Acceleration Duration", "Sec");
+            addParameterSlider(0, 5, () -> curve.deccelTime,
+                                s -> curve.deccelTime = s, "Deceleration Duration", "Sec");
+            addParameterSlider(0, 15, () -> curve.speed,
+                                s -> curve.speed = s, "Nominal Speed", "Feet/Sec");
+
         }
     }
 

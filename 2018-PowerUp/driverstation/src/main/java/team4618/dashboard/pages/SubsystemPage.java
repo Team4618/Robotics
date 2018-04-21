@@ -38,7 +38,7 @@ public class SubsystemPage extends DashboardPage {
             content.getChildren().add(new ParameterTextbox(subsystem.parameterTable.getEntry(param)));
         }
 
-        //Main.redrawCallbacks.add(this::onJavafxLoop);
+        Main.redrawCallbacks.add(this::onJavafxLoop);
     }
 
     public void onJavafxLoop() {

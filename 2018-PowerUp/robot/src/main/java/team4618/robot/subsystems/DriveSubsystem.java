@@ -9,24 +9,21 @@ import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 
 import team4618.robot.CommandSequence.CommandState;
-import team4618.robot.CurveFollower;
-import team4618.robot.CurveFollower.BezierCurve;
 import team4618.robot.CurveFollower.DifferentialTrajectory;
 import team4618.robot.CurveFollower.SegmentedPath;
 import team4618.robot.CurveFollower.Vector;
+import team4618.robot.PositionProvider;
+import team4618.robot.RobotPosition;
 import team4618.robot.Subsystem;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 import static team4618.robot.Robot.driveSubsystem;
 import static team4618.robot.subsystems.DriveSubsystem.Parameters.*;
 import static team4618.robot.Subsystem.Units.*;
 
-public class DriveSubsystem extends Subsystem {
+public class DriveSubsystem extends Subsystem implements PositionProvider {
     public static double getFeetPerPulse(double wheelDiameterInInches, double ticksPerRevolution) { return (2 * Math.PI * (wheelDiameterInInches / 2) / 12) / ticksPerRevolution; }
-
     public static final double feet_per_pulse = getFeetPerPulse(6, 4096);
 
     public class DriveSide {
@@ -37,13 +34,13 @@ public class DriveSubsystem extends Subsystem {
         public DriveSide(int shepherd_can_id, int sheep_can_id, boolean flipDirection) {
             shepherd = new WPI_TalonSRX(shepherd_can_id);
             sheep = new WPI_VictorSPX(sheep_can_id);
-            //TODO: i dont like this
-            //sheep.follow(shepherd);
             shepherd.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, 0);
             this.flipDirection = flipDirection;
         }
 
         public void setSetpoint(double setpoint) { shepherd.set(ControlMode.Velocity, setpoint * (1.0 / 10.0) * (1 / DriveSubsystem.feet_per_pulse)); }
+        public void setPositionSetpoint(double setpoint) { shepherd.set(ControlMode.Position, setpoint * (1 / DriveSubsystem.feet_per_pulse)); }
+
         public double getDistance() { return (flipDirection ? -1 : 1) * feet_per_pulse * shepherd.getSensorCollection().getQuadraturePosition(); }
         //NOTE: multiply by 10 because it provides in ticks/100ms and we want ticks/sec
         public double getRate() { return (flipDirection ? -1 : 1) * feet_per_pulse * 10 * shepherd.getSensorCollection().getQuadratureVelocity(); }
@@ -52,7 +49,8 @@ public class DriveSubsystem extends Subsystem {
             PostState(prefix + " Speed", FeetPerSecond, getRate());
             PostState(prefix + " Position", Feet, getDistance());
             PostState(prefix + " Raw Position", Unitless, shepherd.getSensorCollection().getQuadraturePosition());
-            PostState(prefix + " Setpoint", FeetPerSecond, (shepherd.getControlMode() == ControlMode.Velocity) ? (feet_per_pulse * 10 * shepherd.getClosedLoopTarget(0)) : 0);
+            PostState(prefix + " Velocity Setpoint", FeetPerSecond, (shepherd.getControlMode() == ControlMode.Velocity) ? (feet_per_pulse * 10 * shepherd.getClosedLoopTarget(0)) : 0);
+            PostState(prefix + " Position Setpoint", Feet, (shepherd.getControlMode() == ControlMode.Position) ? (feet_per_pulse * shepherd.getClosedLoopTarget(0)) : 0);
             PostState(prefix + " Power", Percent, shepherd.getMotorOutputPercent());
             PostState(prefix + " Current", Percent, shepherd.getOutputCurrent());
         }
@@ -82,6 +80,8 @@ public class DriveSubsystem extends Subsystem {
     @Subsystem.ParameterEnum
     public enum Parameters { LeftP, LeftI, LeftD, LeftF,
                              RightP, RightI, RightD, RightF,
+                             LeftPosP, LeftPosI, LeftPosD, LeftPosF,
+                             RightPosP, RightPosI, RightPosD, RightPosF,
                              TurnSlop, TurnRateSlop, TurnOvershootSpeed,
                              DistanceSlop, DistanceRateSlop, DistanceOvershootSpeed }
 
@@ -103,9 +103,13 @@ public class DriveSubsystem extends Subsystem {
     public void postState() {
         left.postState("Left");
         right.postState("Right");
-        PostState("Speed", FeetPerSecond, (left.getRate() + right.getRate()) / 2.0);
+        PostState("Speed", FeetPerSecond, getSpeed());
         PostState("Angle", Degrees, navx.getAngle());
         PostState("Roll", Degrees, navx.getRoll());
+    }
+
+    public double getSpeed() {
+        return (left.getRate() + right.getRate()) / 2.0;
     }
 
     public void resetPID() {
@@ -114,6 +118,30 @@ public class DriveSubsystem extends Subsystem {
 
         left.shepherd.set(0);
         right.shepherd.set(0);
+    }
+
+    public void setVelocityPID() {
+        left.shepherd.config_kP(0, value(LeftP), 0);
+        left.shepherd.config_kI(0, value(LeftI), 0);
+        left.shepherd.config_kD(0, value(LeftD), 0);
+        left.shepherd.config_kF(0, value(LeftF), 0);
+
+        right.shepherd.config_kP(0, value(RightP), 0);
+        right.shepherd.config_kI(0, value(RightI), 0);
+        right.shepherd.config_kD(0, value(RightD), 0);
+        right.shepherd.config_kF(0, value(RightF), 0);
+    }
+
+    public void setPositionPID() {
+        left.shepherd.config_kP(0, value(LeftPosP), 0);
+        left.shepherd.config_kI(0, value(LeftPosI), 0);
+        left.shepherd.config_kD(0, value(LeftPosD), 0);
+        left.shepherd.config_kF(0, value(LeftPosF), 0);
+
+        right.shepherd.config_kP(0, value(RightPosP), 0);
+        right.shepherd.config_kI(0, value(RightPosI), 0);
+        right.shepherd.config_kD(0, value(RightPosD), 0);
+        right.shepherd.config_kF(0, value(RightPosF), 0);
     }
 
     //TODO: fix this, slowdown to distance part breaks with negatives
@@ -143,6 +171,7 @@ public class DriveSubsystem extends Subsystem {
                                                             @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Feet) double distanceToSlowdown) {
         if(commandState.init) {
             resetPID();
+            setVelocityPID();
             startDriveAngle = navx.getAngle();
         }
 
@@ -188,8 +217,10 @@ public class DriveSubsystem extends Subsystem {
     @Command()
     public boolean turnToAngle(CommandState commandState, @Unit(Degrees) double angle, @Unit(FeetPerSecond) double maxSpeed,
                                                           @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Degrees) double angleToSlowdown) {
-        if(commandState.init)
+        if(commandState.init) {
             resetPID();
+            setVelocityPID();
+        }
 
         double canonicalized = canonicalizeAngle(angle);
         double curr_angle = getAngle();
@@ -218,7 +249,8 @@ public class DriveSubsystem extends Subsystem {
     int curvei = 0;
 
     @Command
-    public boolean driveCurve(CommandState commandState, @Unit(Seconds) double time, double[] pointCoords) {
+    public boolean driveCurve(CommandState commandState, @Unit(Seconds) double tAccel, @Unit(Seconds) double tDeccel,
+                                                         @Unit(FeetPerSecond) double speed, double[] pointCoords) {
         if(commandState.init) {
             curvei = 0;
 
@@ -228,39 +260,33 @@ public class DriveSubsystem extends Subsystem {
                 for(int i = 0; i < pointCoords.length; i += 2)
                     points.add(new Vector(pointCoords[i], pointCoords[i + 1]));
 
-                //BezierCurve curve = new BezierCurve(points);
-                //curveProfile = curve.buildProfile(time);
-
                 SegmentedPath path = new SegmentedPath(points);
-                curveProfile = path.buildProfile(3);
-
-                commandState.postState("Generated", Percent, 0);
+                System.out.println("Beginning calculation");
+                curveProfile = path.buildProfile(tAccel, tDeccel, Math.abs(speed), speed < 0);
+                System.out.println("Done calculation");
             } else {
                 System.out.println("Incorrect number of point coordinates: " + pointCoords.length);
                 curveProfile = new ArrayList<>();
             }
+
+            commandState.startTime = Timer.getFPGATimestamp();
+            resetPID();
+            setPositionPID();
         }
 
-        commandState.postState("Generated", Percent, 100);
         boolean running = curvei < curveProfile.size();
+        commandState.postState("Time", Seconds, commandState.elapsedTime);
+        commandState.postState("Trajectory i", Unitless, curvei);
 
         if(running) {
             DifferentialTrajectory currTraj = curveProfile.get(curvei);
 
-            double angleError = currTraj.angle - (navx.getAngle() + 90);
-
-            left.setSetpoint(currTraj.r);//+ (angleError * 0.01));
-            right.setSetpoint(currTraj.l);//- (angleError * 0.01));
+            left.setPositionSetpoint(currTraj.pr);
+            right.setPositionSetpoint(currTraj.pl);
 
             while((curvei < curveProfile.size()) && (commandState.elapsedTime > curveProfile.get(curvei).t)) {
                 curvei++;
             }
-        } else {
-            //left.setSetpoint(0);
-            //right.setSetpoint(0);
-
-            left.shepherd.set(0);
-            right.shepherd.set(0);
         }
 
         return !running;
@@ -277,8 +303,10 @@ public class DriveSubsystem extends Subsystem {
 
             if(rawProfile.length % 3 == 0) {
                 for(int i = 0; i < rawProfile.length; i += 3)
-                    profile.add(new DifferentialTrajectory(rawProfile[i] / multiplier, rawProfile[i + 1] * multiplier, rawProfile[i + 2] * multiplier, 0));
+                    profile.add(new DifferentialTrajectory(rawProfile[i] / multiplier, rawProfile[i + 1] * multiplier, 0, rawProfile[i + 2] * multiplier, 0, 0));
             }
+
+            setVelocityPID();
         }
 
         boolean running = profilei < profile.size();
@@ -286,8 +314,8 @@ public class DriveSubsystem extends Subsystem {
         if(running) {
             DifferentialTrajectory currTraj = profile.get(profilei);
 
-            left.setSetpoint(currTraj.l);
-            right.setSetpoint(currTraj.r);
+            left.setSetpoint(currTraj.vl);
+            right.setSetpoint(currTraj.vr);
 
             while((profilei < profile.size()) && (commandState.elapsedTime > profile.get(profilei).t)) {
                 profilei++;
@@ -314,9 +342,17 @@ public class DriveSubsystem extends Subsystem {
     }
 
     public void periodic() {
-        //TODO: follow mode broke for some reason
         left.sheep.set(left.shepherd.getMotorOutputPercent());
         right.sheep.set(right.shepherd.getMotorOutputPercent());
+    }
+
+    public RobotPosition getPosition(RobotPosition prevPos, double dt) {
+        double speed = driveSubsystem.getSpeed();
+        double angle = driveSubsystem.getAngle();
+
+        return new RobotPosition(prevPos.x + dt * speed * Math.cos(Math.toRadians(angle)),
+                                 prevPos.y + dt * speed * Math.sin(Math.toRadians(angle)),
+                                    getAngle());
     }
 
     public String name() { return "Drive"; }

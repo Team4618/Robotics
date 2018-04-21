@@ -2,6 +2,7 @@ package team4618.robot;
 
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
+import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.wpilibj.*;
 import team4618.robot.subsystems.DriveSubsystem;
 import team4618.robot.subsystems.ElevatorSubsystem;
@@ -9,6 +10,7 @@ import team4618.robot.subsystems.IntakeSubsystem;
 
 import static team4618.robot.CommandSequence.autoTable;
 import static team4618.robot.CommandSequence.teleopTable;
+import static team4618.robot.subsystems.IntakeSubsystem.Parameters.WristDown;
 import static team4618.robot.subsystems.IntakeSubsystem.Parameters.WristElevatorSafe;
 import static team4618.robot.subsystems.IntakeSubsystem.Parameters.WristSlop;
 
@@ -24,19 +26,32 @@ public class Robot extends TimedRobot {
 
     public void robotInit() {
         //TODO: switch name for different bots
-        CommandSequence.init(this, "Felix");
+        CommandSequence.init(this, "Shopping Cart");
         autoProgram = new CommandSequence(CommandSequence.table.getSubTable("Executing"));
         Subsystems.init();
 
         ledOutput = new DigitalOutput(3);
+        lastTime = Timer.getFPGATimestamp();
     }
 
     WPI_VictorSPX ledController = new WPI_VictorSPX(33);
     DigitalOutput ledOutput;
 
+    public double lastTime = 0;
+    public RobotPosition pos = new RobotPosition(0, 0, 0);
+
     public void robotPeriodic() {
+        NetworkTable mainTable = CommandSequence.table;
+
+        double time = Timer.getFPGATimestamp();
+        pos = driveSubsystem.getPosition(pos, time - lastTime);
+        lastTime = time;
+        mainTable.getEntry("x").setValue(pos.x);
+        mainTable.getEntry("y").setValue(pos.y);
+        mainTable.getEntry("angle").setValue(pos.angle);
+
         Subsystems.postState();
-        CommandSequence.table.getEntry("mode").setString(isEnabled() ? (isAutonomous() ? "Autonomous" : "Teleop") : "Disabled");
+        mainTable.getEntry("mode").setString(isEnabled() ? (isAutonomous() ? "Autonomous" : "Teleop") : "Disabled");
 
         if(op.getRawButton(8)) {
             driveSubsystem.navx.reset();
@@ -62,7 +77,6 @@ public class Robot extends TimedRobot {
         driveSubsystem.left.shepherd.set(0);
         driveSubsystem.right.shepherd.set(0);
         intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
-        intakeSubsystem.wasLatchUp = false;
         intakeSubsystem.disableWhenSetpointReached = false;
         intakeSubsystem.setWristDown();
         intakeSubsystem.setIntakePower(0);
@@ -78,19 +92,9 @@ public class Robot extends TimedRobot {
     }
 
     public void autonomousPeriodic() {
+        Button.tickAll();
         autoProgram.run();
         Subsystems.periodic();
-    }
-
-    public void setIntakeState(double intakePower, boolean armsOpen, boolean liftUp) {
-        if(liftUp) {
-            intakeSubsystem.setWristUp();
-        } else {
-            intakeSubsystem.setWristDown();
-        }
-
-        intakeSubsystem.setIntakePower(intakeSubsystem.wristAtSetpoint() || liftUp ? intakePower : 0);
-        intakeSubsystem.arms.set(armsOpen ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
     }
 
     ToggleButton elevatorOverride = new ToggleButton(op, 10, false);
@@ -152,8 +156,8 @@ public class Robot extends TimedRobot {
         intakeSubsystem.arms.set(armsOpen ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
     }
 
-    public double deadband(double input, double dead) {
-        return Math.abs(input) >= dead ? input : 0;
+    public double clamp(double min, double x, double max) {
+        return Math.min(max, Math.max(x, min));
     }
 
     public void teleopPeriodic() {
@@ -172,6 +176,7 @@ public class Robot extends TimedRobot {
 
         boolean bottomSafeZone = (elevatorSetpoint == 0) && (elevatorSubsystem.getHeight() < 10000);
         boolean topSafeZone = (elevatorSetpoint >= elevatorSetpoints.length - 1) && (elevatorSubsystem.getHeight() > 28000);
+        boolean wristSafe = intakeSubsystem.isElevatorSafe() || topSafeZone || bottomSafeZone;
 
         //intake states
         if(!climbToggle.state) {
@@ -194,7 +199,7 @@ public class Robot extends TimedRobot {
             } else if(pullInButton.isDown()) {
                 setIntakeState(0.75, false);
             } else if(elevatorBreakToggle.isDown() /*TODO: Put this on the DPad*/) {
-                setIntakeState(intakeSubsystem.isWristShoot() ?  -1 : 0, false);
+                setIntakeState(/*intakeSubsystem.isWristShoot() ?  -1 :*/ 0, false);
             } else if(shootSlowButton.isDown()) {
                 setIntakeState(-0.35, false);
             } else if(shootFastButton.isDown()) {
@@ -222,55 +227,14 @@ public class Robot extends TimedRobot {
                     intakeSubsystem.hitSetpoint = false;
                     intakeSubsystem.setWristDown();
                 } else {
-                    if(intakeSubsystem.hitSetpoint) {
-                        double wristPower = elevatorAnalog();
-                        boolean wristDownLimit = (wristPower > 0) && intakeSubsystem.isWristDown();
-                        boolean wristUpLimit = (wristPower < 0) && (intakeSubsystem.getWristPosition() < (intakeSubsystem.value(WristElevatorSafe) + 2 * intakeSubsystem.value(WristSlop)));
-                        intakeSubsystem.wrist.set(wristUpLimit || wristDownLimit ? 0 : wristPower);
-                    }
+                    double maxSetpoint = intakeSubsystem.value(WristDown);
+                    double minSetpoint = intakeSubsystem.value(WristElevatorSafe) + 2 * intakeSubsystem.value(WristSlop);
+                    double newSetpoint = intakeSubsystem.wristSetpoint + 3 * elevatorAnalog();
+                    intakeSubsystem.wristSetpoint = clamp(minSetpoint, newSetpoint, maxSetpoint);
                 }
             }
 
-            /*
-            if(placeCube.isDown()) {
-                setIntakeState(0, intakeSubsystem.isWristDown(), false);
-            } else if(pullInButton.isDown()) {
-                //intakeSubsystem.setIntakePower(0.75);
-                //intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
-
-                setIntakeState(0.75, false, false);
-            } else if(wristUp.isDown()) {
-                setIntakeState(0, false, true);
-            } else if(elevatorBreakToggle.isDown()) {
-                intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
-                intakeSubsystem.setWristShoot();
-                intakeSubsystem.setIntakePower(intakeSubsystem.wristAtSetpoint() ? -1 : 0);
-            } else if (shootSlowButton.isDown()) {
-                setIntakeState(-0.35, false, false);
-            } else if (shootFastButton.isDown()) {
-                setIntakeState(-1, false, false);
-            } else if (intakeAnalogPressed()) {
-                if(!wasIntaking) {
-                    intakeStartTime = Timer.getFPGATimestamp();
-                }
-
-                elevatorSetpoint = 0;
-                holdFromAuto = false;
-                wasIntaking = true;
-                if(intakeSubsystem.hasCube()) {
-                    intakeHasCube = true;
-                }
-                setIntakeState(intakeHasCube || ((Timer.getFPGATimestamp() - intakeStartTime) < 0.5) ? 0 : 0.75, !intakeHasCube, false);
-            } else if(wristUpAnalogPressed()){
-                setIntakeState(0, false, true);
-            } else {
-                intakeHasCube = false;
-                wasIntaking = false;
-                setIntakeState(0, false, false);
-            }
-            */
-
-            if(!bottomSafeZone && !topSafeZone && !intakeSubsystem.isElevatorSafe() /*&& !elevatorBreakToggle.isDown()*/) {
+            if(!wristSafe && !elevatorBreakToggle.isDown()) {
                 intakeSubsystem.hitSetpoint = false;
                 intakeSubsystem.setWristDown();
             }
@@ -284,7 +248,7 @@ public class Robot extends TimedRobot {
 
         //Set height setpoint to setpoint from the array
         if(!holdFromAuto) {
-            elevatorSubsystem.heightSetpoint = (intakeSubsystem.isElevatorSafe() || topSafeZone || bottomSafeZone) ? elevatorSetpoints[elevatorSetpoint] : elevatorSubsystem.getHeight();
+            elevatorSubsystem.heightSetpoint = wristSafe ? elevatorSetpoints[elevatorSetpoint] : elevatorSubsystem.getHeight();
         }
 
         //Climb controls
@@ -306,7 +270,8 @@ public class Robot extends TimedRobot {
             intakeSubsystem.setWristUp();
             intakeSubsystem.hitSetpoint = false; //TODO: this does what wristDisabledForClimb does, eliminate the latter
             intakeSubsystem.arms.set(DoubleSolenoid.Value.kForward);
-            double climbSetpoint = 29300; //elevatorSetpoints[elevatorSetpoints.length - 1];
+            double climbSetpoint = 29300;
+            //TODO: as far as I can tell this only works because its below the regular setpoint setting code, thats how it avoids the wrist safety
             elevatorSubsystem.heightSetpoint = intakeSubsystem.wristAtSetpoint() ? climbSetpoint : 0;
 
             if(intakeSubsystem.wristAtSetpoint()) {
@@ -324,6 +289,7 @@ public class Robot extends TimedRobot {
             }
 
             if(wristDisabledForClimb) {
+                //TODO: we may need to send power to hold the wrist up
                 intakeSubsystem.wrist.set(0);
             }
         }
@@ -348,22 +314,17 @@ public class Robot extends TimedRobot {
         //OP override controls (these go last so they overwrite any values above)
         if(elevatorOverride.state) {
             elevatorSubsystem.shepherd.set(elevatorPowerAnalog());
-            //TODO: i dont like this
             elevatorSubsystem.sheep.set(elevatorPowerAnalog());
             elevatorSubsystem.auxiliary.set(ControlMode.PercentOutput, engageAuxiliary.isDown() ? elevatorPowerAnalog() : 0);
             elevatorSubsystem.periodicEnabled = false;
         }
 
-        /*
-        if(intakeOverride.released) {
-            intakeSubsystem.periodicEnabled = !intakeSubsystem.periodicEnabled;
-        }
-        */
-
         if(intakeOverride.state) {
+            if(intakeSubsystem.wristPID.isEnabled())
+                intakeSubsystem.wristPID.disable();
+
             double wristPower = Math.abs(intakeLiftAnalog()) < 0.1 ? 0 : intakeLiftAnalog();
             intakeSubsystem.wrist.set(wristPower);
-            intakeSubsystem.latch.set(openLatch.isDown() ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
             intakeSubsystem.periodicEnabled = false;
         }
 
@@ -372,26 +333,31 @@ public class Robot extends TimedRobot {
         //Teleop status, displayed on the dashboard
         teleopTable.getEntry("Gear").setString(shiftToggle.state ? "Low" : "High");
         teleopTable.getEntry("Elevator Setpoint").setString(String.valueOf(elevatorSetpoint));
-        teleopTable.getEntry("Elevator").setString(elevatorOverride.state ? "Manual" : "Automatic");
+        teleopTable.getEntry("Elevator").setString(elevatorSubsystem.periodicEnabled ? "Automatic" : "Manual");
         teleopTable.getEntry("Intake").setString(intakeSubsystem.periodicEnabled ? "Automatic" : "Manual");
         teleopTable.getEntry("Cube Sensor").setString(intakeSubsystem.cubeSensorEnabled ? "Enabled" : "Disabled");
         teleopTable.getEntry("Climb Mode").setString(climbToggle.state ? "Enabled" : "Disabled");
         teleopTable.getEntry("Intake Spinning").setBoolean(Math.abs(intakeSubsystem.leftIntake.getMotorOutputPercent()) > 0.1);
-
-        teleopTable.getEntry("Wrist Safe").setBoolean(bottomSafeZone || topSafeZone);
-
-        //teleopTable.getEntry("Driver DPad").setNumber(driver.getPOV());
-        //teleopTable.getEntry("Climb Disable PID DPad").setBoolean(climbDisableHold());
+        teleopTable.getEntry("Wrist Safe").setBoolean(wristSafe);
 
         Subsystems.periodic();
     }
 
     public void testInit() {
-        teleopInit();
+        //teleopInit();
+        autonomousInit();
         elevatorOverride.state = true;
         intakeOverride.state = true;
     }
-    public void testPeriodic() { teleopPeriodic(); }
+
+    public void testPeriodic() {
+        //teleopPeriodic();
+        autonomousPeriodic();
+    }
+
+    public void disabledInit() {
+        intakeSubsystem.wristPID.disable();
+    }
 
 //hi jon
     @CommandSequence.Logic public boolean leftSwitchOurs() { return DriverStation.getInstance().getGameSpecificMessage().charAt(0) == 'L'; }

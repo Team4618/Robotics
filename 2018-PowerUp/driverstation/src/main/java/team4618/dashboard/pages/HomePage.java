@@ -37,7 +37,7 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     VBox currentlyExecuting = new VBox();
 
     public static FieldTopdown.StartingPosition startingPos;
-    public static RobotPosition currentPosition;
+    public static RobotPosition currentPosition = new RobotPosition(0, 0, 0, 0);
 
     public HomePage() {
         liveFieldView = new FieldTopdown(this);
@@ -86,6 +86,8 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     public void onClickStartingLocation(FieldTopdown.StartingPosition pos) {
         liveFieldView.overlay.clear();
         startingPos = pos;
+
+        //TODO: instead of setting current position, send the position to the robot as it handles the position tracking
         currentPosition = new RobotPosition(pos.x, pos.y, System.currentTimeMillis() / 1000.0, 0);
 
         try {
@@ -141,18 +143,28 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     public void updateLiveView() {
         double time = System.currentTimeMillis() / 1000.0;
 
+        /*
+        if(Main.connected) {
+            double x = 12 * Main.mainTable.getEntry("x").getDouble(0);
+            double y = 12 * Main.mainTable.getEntry("y").getDouble(0);
+            double angle = Main.subsystems.get("Drive").stateTable.getEntry("Angle_Value").getDouble(0);
+
+            RobotPosition newPos = new RobotPosition(x, y, time, angle);
+            if (((currentPosition.x - x) * (currentPosition.x - x) + (currentPosition.y - y) * (currentPosition.y - y)) > 2) {
+                currentPosition = newPos;
+                liveFieldView.overlay.add(newPos);
+            }
+        }
+*/
+
         if(currentPosition != null) {
             double speed = 12 * Main.subsystems.get("Drive").stateTable.getEntry("Speed_Value").getDouble(0);
             double angle = Main.subsystems.get("Drive").stateTable.getEntry("Angle_Value").getDouble(0);
             double deltat = time - currentPosition.time;
             RobotPosition newPos = new RobotPosition(currentPosition.x + speed * deltat * Math.cos(Math.toRadians(angle)),
                                                      currentPosition.y + speed * deltat * Math.sin(Math.toRadians(angle)), time, angle);
-
-            //TODO: set this threshold (currently at 2 inches)
-            /*if(Math.sqrt(Math.pow(currentPosition.x - newPos.x, 2) + Math.pow(currentPosition.y - newPos.y, 2)) < 2)*/ {
-                currentPosition = newPos;
-                liveFieldView.overlay.add(newPos);
-            }
+            currentPosition = newPos;
+            liveFieldView.overlay.add(newPos);
         }
 
         if(AutonomousPage.recording) {
@@ -161,7 +173,8 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
             boolean moving = (Math.abs(leftSpeed) > 0.1) || (Math.abs(leftSpeed) > 0.1);
 
             if(moving || (AutonomousPage.recordedProfile.size() > 0)) {
-                AutonomousPage.recordedProfile.add(new DifferentialTrajectory(time - AutonomousPage.recordingStartTime, leftSpeed, rightSpeed, 0));
+                //TODO: rewrite or remove
+                AutonomousPage.recordedProfile.add(new DifferentialTrajectory(time - AutonomousPage.recordingStartTime, leftSpeed, 0, rightSpeed, 0, 0));
 
                 if(moving) {
                     AutonomousPage.lastMovingTraj = AutonomousPage.recordedProfile.size();

@@ -17,15 +17,17 @@ public class IntakeSubsystem extends Subsystem {
 
     public Encoder wristEncoder = new Encoder(0, 1);
     public WPI_VictorSPX wrist = new WPI_VictorSPX(24);
-    public DoubleSolenoid latch = new DoubleSolenoid(4, 5);
+    public PIDController wristPID = new PIDController(0, 0, 0, wristEncoder, wrist);
 
     public WPI_VictorSPX leftIntake = new WPI_VictorSPX(15);
     public WPI_VictorSPX rightIntake = new WPI_VictorSPX(25);
     public DigitalInput cubeSensor = new DigitalInput(2);
 
-    public UsbCamera camera;
+    //public UsbCamera camera;
 
     public boolean cubeSensorEnabled = true;
+
+    //TODO: remove all of these
     public double wristSetpoint = 0;
     public boolean slowWrist = true;
     public boolean disableWhenSetpointReached = false;
@@ -33,25 +35,32 @@ public class IntakeSubsystem extends Subsystem {
     @Subsystem.ParameterEnum
     public enum Parameters { WristDown, WristUp, WristShoot,
                              WristUpPower, WristDownPower, WristHoldPower, WristUpSlowPower, WristDownSlowPower,
-                             WristElevatorSafe, WristCalibrate, WristSlop,
+                             WristElevatorSafe, WristCalibrate, WristUpLimit, WristDownLimit,
+                             WristP, WristI, WristD, WristSlop,
                              ShootTime,
                              CameraExposure }
 
-    public void updateParameters() { camera.setExposureManual((int) value(CameraExposure)); }
+    public void updateParameters() {
+        //camera.setExposureManual((int) value(CameraExposure));
+        wristPID.setPID(value(WristP), value(WristI), value(WristD));
+    }
 
     public void init() {
-        wristEncoder.setPIDSourceType(PIDSourceType.kRate);
+        wristEncoder.setPIDSourceType(PIDSourceType.kDisplacement);
 
+        /*
         camera = CameraServer.getInstance().startAutomaticCapture();
         camera.setResolution(640, 480);
         camera.setFPS(30);
         camera.setExposureManual(100);
+        */
     }
 
     public void postState() {
         PostState("Wrist Raw Encoder", Unitless, wristEncoder.get());
         PostState("Wrist Position", Unitless, getWristPosition());
         PostState("Wrist Power", Percent, wrist.getMotorOutputPercent());
+        PostState("Wrist Setpoint", Unitless, wristPID.isEnabled() ? wristPID.getSetpoint() : 0);
         PostState("Cube Sensor", Percent, cubeSensor.get() ? 1 : 0);
     }
 
@@ -134,14 +143,17 @@ public class IntakeSubsystem extends Subsystem {
 
     public double lastWristPosition = 0;
     public int timeoutCounter = 0;
-    public boolean wasLatchUp = false;
-    public double latchTimer = 0;
 
+    //TODO: remove this
     public boolean hitSetpoint = false;
 
     public void periodic() {
+        if(!wristPID.isEnabled())
+            wristPID.enable();
+
         double wristPosition = getWristPosition();
 
+        /*
         if(!hitSetpoint || !disableWhenSetpointReached) {
             double wristPower = 0;
             if (Math.abs(wristSetpoint - wristPosition) < value(WristSlop)) {
@@ -155,29 +167,20 @@ public class IntakeSubsystem extends Subsystem {
                 wristPower = slowWrist ? value(WristUpSlowPower) : value(WristUpPower);
             }
 
-            /*
-            boolean latchUp = true;
-            if(wristSetpoint <= value(WristUp)) {
-                latchUp = false;
-            }
-            latch.set(latchUp ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
-
-            if(latchUp && !wasLatchUp) {
-                latchTimer = Timer.getFPGATimestamp();
-                System.out.print("Set timer ");
-            }
-            wasLatchUp = latchUp;
-
-            if(latchUp && (Timer.getFPGATimestamp() - latchTimer < 0.5)) {
-                wristPower = -0.2; //value(WristHoldPower);
-                System.out.println(Timer.getFPGATimestamp() - latchTimer);
-            }
-            */
-
             wrist.set(wristPower);
         }
+        */
 
+        if(wristPosition > value(WristDownLimit)) {
+            wristPID.setOutputRange(-1, 0);
+        } else if(wristPosition < value(WristUpLimit)) {
+            wristPID.setOutputRange(0, 1);
+        } else {
+            wristPID.setOutputRange(-1, 1);
+        }
 
+        //TODO: redundant, also we should just make everything relative to the calibration point
+        wristPID.setSetpoint(wristSetpoint - value(WristCalibrate));
 
         if((lastWristPosition == wristPosition) && (Math.abs(wrist.getMotorOutputPercent()) > 0.15)) {
             timeoutCounter++;

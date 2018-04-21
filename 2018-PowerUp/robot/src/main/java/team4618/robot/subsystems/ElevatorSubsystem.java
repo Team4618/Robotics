@@ -17,7 +17,7 @@ public class ElevatorSubsystem extends Subsystem {
 
     public WPI_TalonSRX shepherd = new WPI_TalonSRX(13);
     public WPI_VictorSPX sheep = new WPI_VictorSPX(23);
-    public BaseMotorController auxiliary = new WPI_VictorSPX(14); //TODO: change this to a victor on the comp bot
+    public BaseMotorController auxiliary = new WPI_TalonSRX(14); //TODO: change this to a victor on the comp bot
     public DoubleSolenoid elevatorBrake = new DoubleSolenoid(7, 6);
     public double heightSetpoint = 0;
 
@@ -25,9 +25,6 @@ public class ElevatorSubsystem extends Subsystem {
         shepherd.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, 0);
         shepherd.configPeakOutputForward(1, 0);
         shepherd.configPeakOutputReverse(-1 /*0.35*/, 0);
-
-        //TODO i dont like this
-        //sheep.follow(shepherd);
 
         shepherd.setSensorPhase(true);
         shepherd.setInverted(true);
@@ -112,7 +109,6 @@ public class ElevatorSubsystem extends Subsystem {
             setSpeedSetpoint(speed);
         }
 
-        //TODO: i dont like this
         sheep.set(shepherd.getMotorOutputPercent());
     }
 

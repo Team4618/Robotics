@@ -22,6 +22,8 @@ import javafx.util.Duration;
 import team4618.dashboard.components.MultiLineGraph;
 import team4618.dashboard.pages.*;
 
+import java.net.DatagramSocket;
+import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.function.Consumer;
@@ -79,6 +81,9 @@ public class Main extends Application implements Consumer<ConnectionNotification
         }
     }
 
+    public static Socket commPort;
+    public static DatagramSocket statePort;
+
     public static HashMap<String, Subsystem> subsystems = new HashMap<>();
 
     public static ArrayList<Runnable> redrawCallbacks = new ArrayList<>();
@@ -94,6 +99,18 @@ public class Main extends Application implements Consumer<ConnectionNotification
 
     @Override
     public void start(Stage window) {
+        //TODO: new networking
+        /*
+        try {
+            commPort = new Socket("roboRIO-4618-FRC.lan", 5082);
+            statePort = new DatagramSocket();
+
+            statePort.getPort();
+
+
+        } catch(Exception e) { e.printStackTrace(); }
+        */
+
         network = NetworkTableInstance.getDefault();
         network.setServerTeam(4618);
         //network.setServer("localhost");
@@ -166,6 +183,8 @@ public class Main extends Application implements Consumer<ConnectionNotification
         menu.getChildren().add(robot);
     }
 
+    public static boolean connected = false;
+
     @Override
     public void accept(ConnectionNotification connectionNotification) {
         for(Node n : menu.getChildren()) {
@@ -177,6 +196,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
 
         subsystems.clear();
 
+        connected = connectionNotification.connected;
         if(connectionNotification.connected) {
             connectionStatus.setFill(Color.GREEN);
             connectionName.setText(mainTable.getEntry("name").getString(""));

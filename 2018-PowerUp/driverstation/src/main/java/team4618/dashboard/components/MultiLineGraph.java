@@ -75,12 +75,13 @@ public class MultiLineGraph extends VBox {
             double atob = Math.sqrt((b.value - a.value) * (b.value - a.value) + (b.time - a.time) * (b.time - a.time));
             double atoe = Math.sqrt((e.value - a.value) * (e.value - a.value) + (e.time - a.time) * (e.time - a.time));
             double etob = Math.sqrt((b.value - e.value) * (b.value - e.value) + (b.time - e.time) * (b.time - e.time));
-            return false; //Math.abs(atoe + etob - atob) == 0.0;
+            //Math.abs(atoe + etob - atob) == 0.0;
+            return (a.value == e.value) && (b.value == e.value);
         }
 
         public void add(Entry e) {
             if(data.isEmpty() || (e.time > getMaxTime())) {
-                if((data.size() > 1) && isOnLine(data.get(data.size() - 1), data.get(data.size() - 1), e)) {
+                if((data.size() > 1) && isOnLine(data.get(data.size() - 1), data.get(data.size() - 2), e)) {
                     data.set(data.size() - 1, e);
                 } else {
                     data.add(e);

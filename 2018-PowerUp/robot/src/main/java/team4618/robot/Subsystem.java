@@ -1,6 +1,8 @@
 package team4618.robot;
 
 import edu.wpi.first.networktables.*;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -98,8 +100,27 @@ public abstract class Subsystem implements TableEntryListener {
         FileIO.MapToFile(this, paramFile);
     }
 
+    //JSONArray state = new JSONArray();
     public void PostState(String name, Units unit, double value) {
+        //TODO: this uses wayy to much memory right now, causes the robot to crash
+        /*
+        JSONObject entry = new JSONObject();
+        entry.put("name", name);
+        entry.put("value", value);
+        entry.put("unit", unit.toString());
+        state.add(entry);
+        */
+
         stateTable.getEntry(name + "_Value").setValue(value);
         stateTable.getEntry(name + "_Unit").setValue(unit.toString());
     }
+
+    /*
+    //TODO: i dont particularly like this, come up with something better
+    public JSONArray getState() {
+        JSONArray currState = state;
+        state = new JSONArray();
+        return currState;
+    }
+    */
 }

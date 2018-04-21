@@ -9,7 +9,7 @@ public class Button {
     public static ArrayList<Button> buttons = new ArrayList<>();
 
     boolean wasDown = false;
-    boolean released = false;
+    public boolean released = false;
     boolean pressBegin = false;
     Supplier<Boolean> down;
 
