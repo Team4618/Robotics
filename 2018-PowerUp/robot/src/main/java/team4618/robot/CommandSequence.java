@@ -8,16 +8,19 @@ import org.json.simple.JSONObject;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 
 public class CommandSequence {
-    public static class CommandState {
+    public static class CommandState<T> {
         public double startTime;
         public double elapsedTime;
         public boolean init = true;
         public NetworkTable currentlyExecutingTable;
+        public T data;
 
         public CommandState(NetworkTable in) {
             currentlyExecutingTable = in;
@@ -36,25 +39,99 @@ public class CommandSequence {
         }
     }
 
-    public static class Command {
-        public Subsystem subsystem;
-        public Method command;
+    public static class CommandInstance implements Executable {
+        public Command command;
         public double[] parameters;
         public CommandState state;
+        Object data;
 
-        public Command(String subsystemName, String commandName, double[] params) {
+        public CommandInstance(String subsystemName, String commandName, double[] params) {
             try {
                 String paramPrintout = "";
                 for(double p : params) { paramPrintout += (p + ", "); }
                 System.out.println(subsystemName + " -> " + commandName + "(" + paramPrintout + ")");
 
-                subsystem = Subsystems.subsystems.get(subsystemName);
-                for(Method m : subsystem.getClass().getDeclaredMethods()) {
-                    if(m.getName().equals(commandName))
-                        command = m;
-                }
+                command = Subsystems.subsystems.get(subsystemName).commands.get(commandName);
                 parameters = params;
+
+                if(command.initializer != null) {
+                    Class<?>[] paramTypes = command.command.getParameterTypes();
+                    boolean overflowArray = paramTypes[paramTypes.length - 1] == double[].class;
+
+                    Object[] initializerParams = new Object[paramTypes.length];
+                    if (overflowArray) {
+                        initializerParams[paramTypes.length - 1] = Arrays.copyOfRange(parameters, paramTypes.length - 2, parameters.length);
+                    }
+                    for (int i = 0; i < paramTypes.length - (overflowArray ? 1 : 0); i++) {
+                        initializerParams[i] = parameters[i];
+                    }
+
+                    data = command.initializer.invoke(command.subsystem, initializerParams);
+                }
             } catch (Exception e) { e.printStackTrace(); }
+        }
+
+        public boolean execute(CommandSequence program) {
+            try {
+                NetworkTable currentlyExecutingTable = program.currentlyExecutingTable;
+
+                if (currentlyExecutingTable != null) {
+                    currentlyExecutingTable.getEntry("Subsystem Name").setString(command.subsystem.name());
+                    currentlyExecutingTable.getEntry("Command Name").setString(command.command.getName());
+                }
+
+                if (state == null) {
+                    state = new CommandState(currentlyExecutingTable);
+                    state.data = data;
+                }
+                state.update();
+
+                Class<?>[] paramTypes = command.command.getParameterTypes();
+                boolean overflowArray = paramTypes[paramTypes.length - 1] == double[].class;
+
+                Object[] params = new Object[paramTypes.length];
+                params[0] = state;
+                if (overflowArray) {
+                    params[paramTypes.length - 1] = Arrays.copyOfRange(parameters, paramTypes.length - 2, parameters.length);
+                }
+                for (int i = 0; i < paramTypes.length - (overflowArray ? 2 : 1); i++) {
+                    params[i + 1] = parameters[i];
+                }
+
+                Object ret = command.command.invoke(command.subsystem, params);
+                state.init = false;
+                return !(ret instanceof Boolean) || ((Boolean) ret);
+            } catch(Exception e) { e.printStackTrace(); }
+            return false;
+        }
+    }
+
+    public static class BranchOption {
+        public ArrayList<Executable> commands;
+        public String condition;
+    }
+
+    public static class BranchCommand implements Executable {
+        public ArrayList<BranchOption> ifs = new ArrayList<>();
+        public ArrayList<Executable> elseCommands;
+
+        public boolean execute(CommandSequence program) {
+            boolean branchPicked = false;
+            for(BranchOption branch : ifs) {
+                if(getCondition(branch.condition)) {
+                    program.commands.remove(program.currentlyExecuting);
+                    program.commands.addAll(program.currentlyExecuting, branch.commands);
+                    branchPicked = true;
+                    break;
+                }
+            }
+
+            if(!branchPicked) {
+                program.commands.remove(program.currentlyExecuting);
+                program.commands.addAll(program.currentlyExecuting, elseCommands);
+            }
+
+            return false;
         }
     }
 
@@ -65,7 +142,10 @@ public class CommandSequence {
     public static NetworkTable logicTable;
     public static NetworkTable teleopTable;
 
-    public static void init(Object logicProvider, String name) {
+    public static HashMap<String, Method> conditions = new HashMap<>();
+    public static Object logicProvider;
+
+    public static void init(Object inLogicProvider, String name) {
         network = NetworkTableInstance.getDefault();
         table = network.getTable("Custom Dashboard");
         table.getEntry("name").setValue(name);
@@ -73,11 +153,21 @@ public class CommandSequence {
         logicTable = table.getSubTable("Logic");
         teleopTable = table.getSubTable("Teleop");
 
+        logicProvider = inLogicProvider;
         for(Method logicFunction : logicProvider.getClass().getDeclaredMethods()) {
             if(logicFunction.isAnnotationPresent(Logic.class)) {
                 logicTable.getEntry(logicFunction.getName()).setString("Unknown");
+                conditions.put(logicFunction.getName(), logicFunction);
             }
         }
+    }
+
+    public static boolean getCondition(String condition) {
+        try {
+            Method logicFunction = conditions.get(condition);
+            return (Boolean) logicFunction.invoke(logicProvider);
+        } catch (Exception e) { e.printStackTrace(); }
+        return false;
     }
 
     public static void resetLogic(Object logicProvider) {
@@ -90,7 +180,12 @@ public class CommandSequence {
         }
     }
 
-    ArrayList<Command> commands = new ArrayList<>();
+    interface Executable {
+        boolean execute(CommandSequence program);
+    }
+
+    ArrayList<Executable> loadedCommands = new ArrayList<>();
+    ArrayList<Executable> commands = new ArrayList<>();
     int currentlyExecuting = 0;
     NetworkTable currentlyExecutingTable;
 
@@ -98,15 +193,12 @@ public class CommandSequence {
 
     public void reset() {
         commands.clear();
+        commands.addAll(loadedCommands);
         currentlyExecuting = 0;
     }
 
-    public void addCommand(String subsystemName, String commandName, double... params) {
-        commands.add(new Command(subsystemName, commandName, params));
-    }
-
     public boolean isDone() {
-        return currentlyExecuting < commands.size();
+        return currentlyExecuting >= commands.size();
     }
 
     public void loadCommandsFromTable(NetworkTable commandTable) {
@@ -117,9 +209,10 @@ public class CommandSequence {
             NetworkTable currCommandTable = commandTable.getSubTable(String.valueOf(i));
 
             if(currCommandTable.containsKey("Subsystem Name") && currCommandTable.containsKey("Command Name") && currCommandTable.containsKey("Params")) {
-                this.addCommand(currCommandTable.getEntry("Subsystem Name").getString(""),
-                        currCommandTable.getEntry("Command Name").getString(""),
-                        currCommandTable.getEntry("Params").getDoubleArray(new double[0]));
+                CommandInstance newCommand = new CommandInstance(currCommandTable.getEntry("Subsystem Name").getString(""),
+                                                                 currCommandTable.getEntry("Command Name").getString(""),
+                                                                 currCommandTable.getEntry("Params").getDoubleArray(new double[0]));
+                commands.add(newCommand);
             } else if(currCommandTable.containsKey("Conditional") && currCommandTable.containsSubTable("commands") && !choseConditional) {
                 boolean condition = logicTable.getEntry(currCommandTable.getEntry("Conditional").getString("")).getString("").equals("True");
                 System.out.println(currCommandTable.getEntry("Conditional").getString("") + " " + condition);
@@ -131,9 +224,9 @@ public class CommandSequence {
         }
     }
 
-    public void loadCommandsFromJSON(JSONArray commands) {
-        boolean choseConditional = false;
-        for(Object obj : commands) {
+    public static ArrayList<Executable> loadCommandsFromJSON(JSONArray jsonCommands) {
+        ArrayList<Executable> result = new ArrayList<>();
+        for(Object obj : jsonCommands) {
             JSONObject command = (JSONObject) obj;
 
             if(command.containsKey("Subsystem Name") && command.containsKey("Command Name") && command.containsKey("Params")) {
@@ -141,51 +234,35 @@ public class CommandSequence {
                 double[] params = new double[jsonParams.size()];
                 for(int i = 0; i < params.length; i++)
                     params[i] = (double) jsonParams.get(i);
-                this.addCommand((String) command.get("Subsystem Name"),
-                                (String) command.get("Command Name"),
-                                params);
-            } else if(command.containsKey("Conditional") && command.containsKey("Commands") && !choseConditional) {
-                //TODO: conditions are always going to be false right now
-                boolean condition = logicTable.getEntry((String) command.get("Conditional")).getString("").equals("True");
-                System.out.println(command.get("Conditional") + " " + condition);
-                if(condition) {
-                    choseConditional = true;
-                    loadCommandsFromJSON((JSONArray) command.get("Commands"));
+
+                CommandInstance newCommand = new CommandInstance((String) command.get("Subsystem Name"),
+                                                                 (String) command.get("Command Name"),
+                                                                 params);
+                result.add(newCommand);
+            } else if(command.containsKey("Ifs")) {
+                JSONArray ifs = (JSONArray) command.get("Ifs");
+                BranchCommand branchCommand = new BranchCommand();
+
+                for(Object branchObj : ifs) {
+                    JSONObject branch = (JSONObject) branchObj;
+                    BranchOption branchOption = new BranchOption();
+
+                    branchOption.condition = (String) branch.get("Condition");
+                    branchOption.commands = loadCommandsFromJSON((JSONArray) branch.get("Commands"));
                 }
+
+                branchCommand.elseCommands = command.containsKey("Else") ? loadCommandsFromJSON((JSONArray) command.get("Else")) : new ArrayList<>();
             }
         }
+        return result;
     }
 
     public void run() {
-        if(isDone()) {
+        if(!isDone()) {
             try {
-                Command currentCommand = commands.get(currentlyExecuting);
+                Executable currentCommand = commands.get(currentlyExecuting);
 
-                if (currentCommand.state == null) {
-                    currentCommand.state = new CommandState(currentlyExecutingTable);
-
-                    if(currentlyExecutingTable != null) {
-                        currentlyExecutingTable.getEntry("Subsystem Name").setString(currentCommand.subsystem.name());
-                        currentlyExecutingTable.getEntry("Command Name").setString(currentCommand.command.getName());
-                    }
-                }
-                currentCommand.state.update();
-
-                //TODO: clean this up
-                Class<?>[] paramTypes = currentCommand.command.getParameterTypes();
-                boolean overflowArray = paramTypes[paramTypes.length - 1] == double[].class;
-
-                Object[] params = new Object[paramTypes.length];
-                params[0] = currentCommand.state;
-                if(overflowArray) {
-                    params[paramTypes.length - 1] = Arrays.copyOfRange(currentCommand.parameters, paramTypes.length - 2, currentCommand.parameters.length);
-                }
-                for (int i = 0; i < paramTypes.length - (overflowArray ? 2 : 1); i++) {
-                    params[i + 1] = currentCommand.parameters[i];
-                }
-
-                Object ret = currentCommand.command.invoke(currentCommand.subsystem, params);
-                if(!(ret instanceof Boolean) || ((Boolean) ret)){
+                if(currentCommand.execute(this)) {
                     if(currentlyExecutingTable != null) {
                         for (String key : currentlyExecutingTable.getKeys()) {
                             currentlyExecutingTable.getEntry(key).delete();
@@ -193,8 +270,6 @@ public class CommandSequence {
                     }
                     currentlyExecuting++;
                 }
-
-                currentCommand.state.init = false;
             } catch (Exception e) { e.printStackTrace(); }
         }
     }

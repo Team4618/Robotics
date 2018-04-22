@@ -19,11 +19,13 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
 import team4618.dashboard.components.MultiLineGraph;
 import team4618.dashboard.pages.*;
 
+import java.io.FileWriter;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
@@ -103,6 +105,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
     public static DatagramChannel channel;
     public static Thread netThread = new Thread(Main::networkTick);
     public static ConcurrentLinkedQueue<ByteBuffer> sendQueue = new ConcurrentLinkedQueue<>();
+    public static String connectedTo = null;
     public static void networkTick() {
         while(true) {
             try {
@@ -119,10 +122,7 @@ public class Main extends Application implements Consumer<ConnectionNotification
                         byte[] data = new byte[buffer.position()];
                         buffer.position(0);
                         buffer.get(data);
-
-                        String message = new String(data, Charset.forName("UTF-8"));
-                        JSONObject json = (JSONObject) JSONValue.parseWithException(message);
-                        System.out.println(message);
+                        HandlePacket(sender, data);
                     }
                 }
 
@@ -135,6 +135,55 @@ public class Main extends Application implements Consumer<ConnectionNotification
                 Thread.sleep(100);
             } catch (Exception e) { e.printStackTrace(); }
         }
+    }
+
+    public static void HandlePacket(SocketAddress sender, byte[] data) {
+        try {
+            String message = new String(data, Charset.forName("UTF-8"));
+            JSONObject json = (JSONObject) JSONValue.parseWithException(message);
+
+            switch((String) json.get("Type")) {
+                case "Welcome": {
+                    String name = (String) json.get("Name");
+                    connectedTo = name;
+                    try {
+                        FileWriter jsonFile = new FileWriter(name + ".json");
+                        json.writeJSONString(jsonFile);
+                        jsonFile.close();
+                    } catch (Exception e) { e.printStackTrace(); }
+                } break;
+
+                case "AutoIs": {
+
+                } break;
+
+                case "ParametersAre": {
+
+
+                    try {
+                        FileWriter jsonFile = new FileWriter(connectedTo + "_parameters.json");
+                        json.writeJSONString(jsonFile);
+                        jsonFile.close();
+                    } catch (Exception e) { e.printStackTrace(); }
+                } break;
+
+                case "ModeIs": {
+
+                } break;
+
+                case "AutoComplete": {
+
+                } break;
+
+                case "BranchDecisionMade": {
+
+                } break;
+
+                case "State": {
+
+                } break;
+            }
+        } catch (Exception e) { e.printStackTrace(); }
     }
 
     @Override

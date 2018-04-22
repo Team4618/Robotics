@@ -57,13 +57,13 @@ public class ElevatorSubsystem extends Subsystem {
     }
 
     @Command
-    public boolean goToHeight(CommandState state, @Unit(Unitless) double height) {
+    public boolean goToHeight(CommandState state, double height) {
         heightSetpoint = height;
         return isAt(height) && (Math.abs(getSpeed()) < value(SpeedSlop));
     }
 
     @Command
-    public void setHeight(CommandState state, @Unit(Unitless) double height) {
+    public void setHeight(CommandState state, double height) {
         heightSetpoint = height;
     }
 

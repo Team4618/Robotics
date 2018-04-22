@@ -75,7 +75,7 @@ public class Robot extends TimedRobot {
     public void autonomousInit() {
         CommandSequence.resetLogic(this);
         autoProgram.reset();
-        autoProgram.loadCommandsFromTable(autoTable);
+        //autoProgram.loadCommandsFromTable(autoTable);
 
         driveSubsystem.shifter.set(DoubleSolenoid.Value.kReverse);
         driveSubsystem.left.shepherd.set(0);
@@ -352,15 +352,13 @@ public class Robot extends TimedRobot {
     }
 
     public void testInit() {
-        //teleopInit();
-        autonomousInit();
+        teleopInit();
         elevatorOverride.state = true;
         intakeOverride.state = true;
     }
 
     public void testPeriodic() {
-        //teleopPeriodic();
-        autonomousPeriodic();
+        teleopPeriodic();
     }
 
     public void disabledInit() {

@@ -134,7 +134,7 @@ public class IntakeSubsystem extends Subsystem {
     }
 
     @Command
-    public boolean shoot(CommandState state, @Unit(Unitless) double speed) {
+    public boolean shoot(CommandState state, double speed) {
         boolean isDone = state.elapsedTime >= value(ShootTime);
         setIntakePower(isDone ? 0 : -speed);
         arms.set(DoubleSolenoid.Value.kForward);

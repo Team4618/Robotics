@@ -67,8 +67,11 @@ public class Network {
                         welcomeMessage.put("Name", Robot.name);
                         welcomeMessage.put("Bounds", new JSONObject());
                         JSONArray commands = new JSONArray();
+                        //TODO: make each command its own json object
+                        Subsystems.subsystems.values().forEach(s -> s.commands.keySet().forEach(c -> commands.add(s.name() + ":" + c)));
                         welcomeMessage.put("Commands", commands);
                         JSONArray conditionals = new JSONArray();
+                        conditionals.addAll(CommandSequence.conditions.keySet());
                         welcomeMessage.put("Conditionals", conditionals);
                         sendTo(welcomeMessage, sender);
                     }
@@ -80,7 +83,9 @@ public class Network {
 
                 case "SetAuto": {
                     JSONArray commands = (JSONArray) json.get("Commands");
-                    Robot.autoProgram.loadCommandsFromJSON(commands);
+                    Robot.autoProgram.loadedCommands = CommandSequence.loadCommandsFromJSON(commands);
+
+                    //TODO: send auto to all connections
                 } break;
 
                 case "GetParameters": {

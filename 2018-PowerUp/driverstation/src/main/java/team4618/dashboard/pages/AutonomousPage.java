@@ -331,6 +331,23 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             }
         });
 
+        Button updateFile = new Button("Save File as V2");
+        updateFile.setOnAction(evt -> {
+            if((startingPos != null) && (currentAutoFile != null)) {
+                JSONObject rootObject = new JSONObject();
+                rootObject.put("Starting Position", startingPos.name);
+                JSONArray rootCommandArray = new JSONArray();
+                rootObject.put("Commands", rootCommandArray);
+                nodesToJson(rootCommandArray, startingNode);
+                System.out.println(rootObject.toString());
+                try {
+                    FileWriter writer = new FileWriter(currentAutoFile);
+                    rootObject.writeJSONString(writer);
+                    writer.close();
+                } catch (IOException e) { e.printStackTrace(); }
+            }
+        });
+
         Button clear = new Button("Clear");
         clear.setOnAction(evt -> {
             resetPathDrawer();
@@ -363,7 +380,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             }
         });
 
-        buttons.getChildren().addAll(pathModeLabel, recordingLabel, upload, download, openFile, saveFile, clear, showAll, saveCurrentFile);
+        buttons.getChildren().addAll(pathModeLabel, recordingLabel, upload, download, openFile, saveFile, updateFile, clear, showAll, saveCurrentFile);
         buttons.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
         content.getChildren().add(buttons);
 
@@ -459,7 +476,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
 
     public static boolean addNodesCommands(ArrayList<AutonomousCommand> commands, PathNode node) {
         commands.addAll(node.commands);
-        if(node.outPaths.size() == 1) {
+        if((node.outPaths.size() == 1) && node.outPaths.get(0).conditional.equals("AlwaysTrue")) {
             DriveManeuver drive = node.outPaths.get(0);
             drive.addCommandsTo(commands);
             if(addNodesCommands(commands, drive.end))
@@ -479,6 +496,49 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         }
 
         return false;
+    }
+
+    public static void nodesToJson(JSONArray commandsJson, PathNode node) {
+        node.commands.forEach(c -> commandsJson.add(c.toJSON()));
+
+        if((node.outPaths.size() == 1) && node.outPaths.get(0).conditional.equals("alwaysTrue")) {
+            DriveManeuver drive = node.outPaths.get(0);
+            ArrayList<AutonomousCommand> maneuverCommands = new ArrayList<>();
+            drive.addCommandsTo(maneuverCommands);
+            maneuverCommands.forEach(c -> commandsJson.add(c.toJSON()));
+            nodesToJson(commandsJson, drive.end);
+        } else if(node.outPaths.size() > 1) {
+            JSONObject branchJson = new JSONObject();
+            JSONArray branchIfs = new JSONArray();
+
+            for (DriveManeuver outDrive : node.outPaths) {
+                if(outDrive.conditional.equals("alwaysTrue")) {
+                    JSONArray elseCommands = new JSONArray();
+
+                    ArrayList<AutonomousCommand> maneuverCommands = new ArrayList<>();
+                    outDrive.addCommandsTo(maneuverCommands);
+                    maneuverCommands.forEach(c -> elseCommands.add(c.toJSON()));
+                    nodesToJson(elseCommands, outDrive.end);
+
+                    branchJson.put("Else", elseCommands);
+                } else {
+                    JSONObject branchOption = new JSONObject();
+                    branchOption.put("Condition", outDrive.conditional);
+                    JSONArray branchCommands = new JSONArray();
+
+                    ArrayList<AutonomousCommand> maneuverCommands = new ArrayList<>();
+                    outDrive.addCommandsTo(maneuverCommands);
+                    maneuverCommands.forEach(c -> branchCommands.add(c.toJSON()));
+                    nodesToJson(branchCommands, outDrive.end);
+
+                    branchOption.put("Commands", branchCommands);
+                    branchIfs.add(branchOption);
+                }
+            }
+
+            branchJson.put("Ifs", branchIfs);
+            commandsJson.add(branchJson);
+        }
     }
 
     public static ArrayList<AutonomousCommand> getCommandList() {

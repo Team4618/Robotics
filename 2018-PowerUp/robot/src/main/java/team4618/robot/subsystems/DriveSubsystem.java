@@ -73,6 +73,8 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
         navx.reset();
 
         teleopDrive.setSafetyEnabled(false);
+        //TODO: i dont like this, it makes typos easy
+        addCommand("driveCurve", "calculateCurve");
     }
 
     @Subsystem.ParameterEnum
@@ -165,8 +167,8 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
     int stalledCounter = 0;
 
     @Command
-    public boolean driveDistance(CommandState commandState, @Unit(Feet) double distance, @Unit(FeetPerSecond) double maxSpeed,
-                                                            @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Feet) double distanceToSlowdown) {
+    public boolean driveDistance(CommandState commandState, double distance, double maxSpeed,
+                                                            double timeUntilMaxSpeed, double distanceToSlowdown) {
         if(commandState.init) {
             resetPID();
             setVelocityPID();
@@ -213,8 +215,8 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
     public double getAngle() { return canonicalizeAngle(navx.getAngle()); }
 
     @Command()
-    public boolean turnToAngle(CommandState commandState, @Unit(Degrees) double angle, @Unit(FeetPerSecond) double maxSpeed,
-                                                          @Unit(Seconds) double timeUntilMaxSpeed, @Unit(Degrees) double angleToSlowdown) {
+    public boolean turnToAngle(CommandState commandState, double angle, double maxSpeed,
+                                                          double timeUntilMaxSpeed, double angleToSlowdown) {
         if(commandState.init) {
             resetPID();
             setVelocityPID();
@@ -243,10 +245,11 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
         return turn_done;
     }
 
-    DifferentialProfile curveProfile;
+    //DifferentialProfile curveProfile;
 
-    public void calculateCurve(double tAccel, double tDeccel,
-                               double speed, double[] pointCoords) {
+    public DifferentialProfile calculateCurve(double tAccel, double tDeccel, double speed, double[] pointCoords) {
+        DifferentialProfile result = null;
+
         if(pointCoords.length % 2 == 0) {
             ArrayList<Vector> points = new ArrayList<>();
             points.add(new Vector(0, 0));
@@ -255,16 +258,17 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
 
             SegmentedPath path = new SegmentedPath(points);
             System.out.println("Beginning calculation");
-            curveProfile = path.buildProfile(tAccel, tDeccel, Math.abs(speed), speed < 0);
+            result = path.buildProfile(tAccel, tDeccel, Math.abs(speed), speed < 0);
             System.out.println("Done calculation");
         } else {
             System.out.println("Incorrect number of point coordinates: " + pointCoords.length);
         }
+
+        return result;
     }
 
-    @Command
-    public boolean driveCurve(CommandState commandState, @Unit(Seconds) double tAccel, @Unit(Seconds) double tDeccel,
-                                                         @Unit(FeetPerSecond) double speed, double[] pointCoords) {
+    public boolean driveCurve(CommandState<DifferentialProfile> commandState,
+                              double tAccel, double tDeccel, double speed, double[] pointCoords) {
         if(commandState.init) {
             calculateCurve(tAccel, tDeccel, speed, pointCoords);
 
@@ -273,6 +277,7 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
             setPositionPID();
         }
 
+        DifferentialProfile curveProfile = commandState.data;
         boolean running = commandState.elapsedTime < curveProfile.length();
         commandState.postState("Time", Seconds, commandState.elapsedTime);
 
@@ -290,7 +295,7 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
     int profilei = 0;
 
     @Command
-    public boolean driveProfile(CommandState commandState, @Unit(Unitless) double multiplier, double[] rawProfile) {
+    public boolean driveProfile(CommandState commandState, double multiplier, double[] rawProfile) {
         if(commandState.init) {
             profile = new ArrayList<>();
             profilei = 0;
@@ -329,7 +334,7 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
     }
 
     @Command
-    public boolean wait(CommandState commandState, @Unit(Seconds) double duration) {
+    public boolean wait(CommandState commandState, double duration) {
         left.setSetpoint(0);
         right.setSetpoint(0);
         return commandState.elapsedTime >= duration;
