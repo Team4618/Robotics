@@ -245,8 +245,6 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
         return turn_done;
     }
 
-    //DifferentialProfile curveProfile;
-
     public DifferentialProfile calculateCurve(double tAccel, double tDeccel, double speed, double[] pointCoords) {
         DifferentialProfile result = null;
 
@@ -270,9 +268,6 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
     public boolean driveCurve(CommandState<DifferentialProfile> commandState,
                               double tAccel, double tDeccel, double speed, double[] pointCoords) {
         if(commandState.init) {
-            calculateCurve(tAccel, tDeccel, speed, pointCoords);
-
-            commandState.startTime = Timer.getFPGATimestamp();
             resetPID();
             setPositionPID();
         }

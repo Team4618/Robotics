@@ -222,16 +222,19 @@ public class Robot extends TimedRobot {
             if((wristUpAnalogPressed() || wristUp.isDown()) && (elevatorSetpoint == 0)) {
                 intakeSubsystem.hitSetpoint = false;
                 intakeSubsystem.setWristUp();
+                holdFromAuto = false;
             } else if(intakeAnalogPressed()) {
                 intakeSubsystem.hitSetpoint = false;
                 intakeSubsystem.setWristDown();
+                holdFromAuto = false;
             } else if(elevatorBreakToggle.isDown() /*TODO: Put this on the DPad*/) {
                 if(elevatorBreakToggle.pressBegin)
                     intakeSubsystem.hitSetpoint = false;
 
                 intakeSubsystem.setWristShoot();
+                holdFromAuto = false;
             } else {
-                if(elevatorSetpoint == 0) {
+                if((elevatorSetpoint == 0) && !holdFromAuto) {
                     intakeSubsystem.hitSetpoint = false;
                     intakeSubsystem.setWristDown();
                 } else {

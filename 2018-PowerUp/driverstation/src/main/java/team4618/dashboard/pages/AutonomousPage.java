@@ -40,6 +40,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
     public static FieldTopdown pathDrawer;
     public static VBox editor;
 
+    /*
     public static void uploadCommands(List<AutonomousCommand> commands) {
         AutonomousCommandTemplate.refreshCommandsAndLogic();
         clearTable("Custom Dashboard/Autonomous");
@@ -176,6 +177,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             }
         }
     }
+*/
 
     public void setPageSelected(boolean selected) {
         FieldTopdown.fieldObjects.forEach(o -> {
@@ -184,10 +186,22 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
         });
     }
 
+    /*
     public static void clearTable(String tableName) {
         NetworkTable table = Main.network.getTable(tableName);
         table.getKeys().forEach(k -> table.getEntry(k).delete());
         table.getSubTables().forEach(s -> clearTable(tableName + "/" + s));
+    }
+    */
+
+    public static void uploadAuto(JSONArray commands) {
+        JSONObject rootObject = new JSONObject();
+        rootObject.put("Type", "SetAuto");
+        rootObject.put("Commands", commands);
+        try {
+            String packet = rootObject.toString();
+            Main.sendQueue.add(ByteBuffer.wrap(packet.getBytes(Charset.forName("UTF-8"))));
+        } catch (Exception e) { e.printStackTrace(); }
     }
 
     public void resetPathDrawer() {
@@ -258,18 +272,9 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
 
         Button upload = new Button("Upload");
         upload.setOnAction(evt -> {
-            uploadCommands(getCommandList());
-
-            JSONObject rootObject = new JSONObject();
-            rootObject.put("Type", "SetAuto");
             JSONArray rootCommandArray = new JSONArray();
-            rootObject.put("Commands", rootCommandArray);
-            getCommandList().forEach(c -> rootCommandArray.add(c.toJSON()));
-            try {
-                String packet = rootObject.toString();
-                System.out.println(packet);
-                Main.sendQueue.add(ByteBuffer.wrap(packet.getBytes(Charset.forName("UTF-8"))));
-            } catch (Exception e) { e.printStackTrace(); }
+            nodesToJson(rootCommandArray, startingNode);
+            uploadAuto(rootCommandArray);
         });
         Button download = new Button("Download");
         download.setOnAction(evt -> {
@@ -277,7 +282,9 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             if(startingPos != null) {
                 startingNode = new PathNode(startingPos.x, startingPos.y);
                 pathDrawer.overlay.add(startingNode);
-                commandsToPath(downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, pathDrawer);
+                JSONArray commands = new JSONArray();
+                jsonToNodes(commands, startingNode, pathDrawer, "alwaysTrue");
+                //commandsToPath(downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, pathDrawer);
                 rebuildEditor();
             }
         });
@@ -299,9 +306,8 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 startingPos = FieldPage.startingPositions.get(rootObject.get("Starting Position"));
                 startingNode = new PathNode(startingPos.x, startingPos.y);
                 pathDrawer.overlay.add(startingNode);
-                ArrayList<AutonomousCommand> commandList = new ArrayList<>();
-                ((JSONArray) rootObject.get("Commands")).forEach(j -> commandList.add(new AutonomousCommand((JSONObject) j)));
-                commandsToPath(commandList, startingNode, pathDrawer);
+
+                jsonToNodes((JSONArray) rootObject.get("Commands"), startingNode, pathDrawer, "alwaysTrue");
             } catch (Exception e) { e.printStackTrace(); }
             rebuildEditor();
         });
@@ -316,7 +322,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 rootObject.put("Starting Position", startingPos.name);
                 JSONArray rootCommandArray = new JSONArray();
                 rootObject.put("Commands", rootCommandArray);
-                getCommandList().forEach(c -> rootCommandArray.add(c.toJSON()));
+                nodesToJson(rootCommandArray, startingNode);
                 try {
                     currentAutoFile = fileChooser.showSaveDialog(new Stage());
                     saveCurrentFile.setVisible(true);
@@ -328,23 +334,6 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-            }
-        });
-
-        Button updateFile = new Button("Save File as V2");
-        updateFile.setOnAction(evt -> {
-            if((startingPos != null) && (currentAutoFile != null)) {
-                JSONObject rootObject = new JSONObject();
-                rootObject.put("Starting Position", startingPos.name);
-                JSONArray rootCommandArray = new JSONArray();
-                rootObject.put("Commands", rootCommandArray);
-                nodesToJson(rootCommandArray, startingNode);
-                System.out.println(rootObject.toString());
-                try {
-                    FileWriter writer = new FileWriter(currentAutoFile);
-                    rootObject.writeJSONString(writer);
-                    writer.close();
-                } catch (IOException e) { e.printStackTrace(); }
             }
         });
 
@@ -362,14 +351,12 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
                 rootObject.put("Starting Position", startingPos.name);
                 JSONArray rootCommandArray = new JSONArray();
                 rootObject.put("Commands", rootCommandArray);
-                getCommandList().forEach(c -> rootCommandArray.add(c.toJSON()));
+                nodesToJson(rootCommandArray, startingNode);
                 try {
                     FileWriter writer = new FileWriter(currentAutoFile);
                     rootObject.writeJSONString(writer);
                     writer.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+                } catch (IOException e) { e.printStackTrace(); }
             }
         });
 
@@ -380,7 +367,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
             }
         });
 
-        buttons.getChildren().addAll(pathModeLabel, recordingLabel, upload, download, openFile, saveFile, updateFile, clear, showAll, saveCurrentFile);
+        buttons.getChildren().addAll(pathModeLabel, recordingLabel, upload, download, openFile, saveFile, clear, showAll, saveCurrentFile);
         buttons.setBackground(new Background(new BackgroundFill(Color.BLACK, new CornerRadii(0), new Insets(0))));
         content.getChildren().add(buttons);
 
@@ -476,7 +463,7 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
 
     public static boolean addNodesCommands(ArrayList<AutonomousCommand> commands, PathNode node) {
         commands.addAll(node.commands);
-        if((node.outPaths.size() == 1) && node.outPaths.get(0).conditional.equals("AlwaysTrue")) {
+        if((node.outPaths.size() == 1) && node.outPaths.get(0).conditional.equals("alwaysTrue")) {
             DriveManeuver drive = node.outPaths.get(0);
             drive.addCommandsTo(commands);
             if(addNodesCommands(commands, drive.end))
@@ -538,6 +525,91 @@ public class AutonomousPage extends DashboardPage implements FieldTopdown.OnClic
 
             branchJson.put("Ifs", branchIfs);
             commandsJson.add(branchJson);
+        }
+    }
+
+    public static void jsonToNodes(JSONArray commandsJson, PathNode startingNode, FieldTopdown field, String condition) {
+        PathNode currNode = startingNode;
+
+        AutonomousCommand lastAngle = null;
+        for(Object obj : commandsJson) {
+            JSONObject commandJson = (JSONObject) obj;
+            if(commandJson.containsKey("Ifs")){
+                for(Object ifObject : (JSONArray) commandJson.get("Ifs")) {
+                    JSONObject ifJson = (JSONObject) ifObject;
+                    JSONArray ifCommandsJson = (JSONArray) ifJson.get("Commands");
+                    jsonToNodes(ifCommandsJson, currNode, field, (String) ifJson.get("Condition"));
+                }
+
+                if(commandJson.containsKey("Else")) {
+                    JSONArray elseCommandsJson = (JSONArray) commandJson.get("Else");
+                    jsonToNodes(elseCommandsJson, currNode, field, "alwaysTrue");
+                }
+            } else {
+                AutonomousCommand command = new AutonomousCommand(commandJson);
+                if(command.templateName.equals("Drive:turnToAngle")) {
+                    lastAngle = command;
+                    currNode.commands.add(command);
+                } else if(command.templateName.equals("Drive:driveDistance")) {
+                    if(lastAngle != null) {
+                        double angle = lastAngle.parameterValues[0];
+                        double distance = command.parameterValues[0] * 12;
+                        PathNode newNode = new PathNode(currNode.x + distance * Math.cos(Math.toRadians(angle)),
+                                currNode.y + distance * Math.sin(Math.toRadians(angle)));
+                        DriveStraight newDrive = new DriveStraight(currNode, newNode);
+                        newDrive.turnMaxSpeed = lastAngle.parameterValues[1];
+                        newDrive.turnTimeUntilMaxSpeed = lastAngle.parameterValues[2];
+                        newDrive.angleToSlowdown = lastAngle.parameterValues[3];
+                        newDrive.driveMaxSpeed = command.parameterValues[1];
+                        newDrive.driveTimeUntilMaxSpeed = command.parameterValues[2];
+                        newDrive.distanceToSlowdown = command.parameterValues[3];
+                        newDrive.backwards = distance < 0;
+                        newDrive.conditional = condition;
+                        condition = "alwaysTrue";
+                        field.overlay.add(newDrive);
+                        field.overlay.add(newNode);
+
+                        currNode.commands.remove(lastAngle);
+                        lastAngle = null;
+                        currNode = newNode;
+                    } else {
+                        HomePage.errorMessage("Cannot Convert Commands To Path", "Drive distance specified without an angle");
+                    }
+                } else if(command.templateName.equals("Drive:driveCurve")) {
+                    if(lastAngle != null) {
+                        double endX = currNode.x + command.parameterValues[command.parameterValues.length - 2] * 12;
+                        double endY = currNode.y + command.parameterValues[command.parameterValues.length - 1] * 12;
+
+                        PathNode newNode = new PathNode(endX, endY);
+
+                        double speed = command.parameterValues[2];
+                        DriveCurve newDrive = new DriveCurve(currNode, newNode);
+                        newDrive.accelTime = command.parameterValues[0];
+                        newDrive.deccelTime = command.parameterValues[1];
+                        newDrive.speed = Math.abs(speed);
+                        newDrive.backwards = speed < 0;
+                        newDrive.conditional = condition;
+                        condition = "alwaysTrue";
+
+                        for(int i = 3; i < command.parameterValues.length - 2; i += 2) {
+                            DriveCurve.ControlPoint c = new DriveCurve.ControlPoint(currNode.x + command.parameterValues[i] * 12, currNode.y + command.parameterValues[i + 1] * 12);
+                            newDrive.controlPoints.add(c);
+                            field.overlay.add(c);
+                        }
+
+                        field.overlay.add(newDrive);
+                        field.overlay.add(newNode);
+
+                        currNode.commands.remove(lastAngle);
+                        lastAngle = null;
+                        currNode = newNode;
+                    } else {
+                        HomePage.errorMessage("Cannot Convert Commands To Path", "Drive curve specified without an angle");
+                    }
+                } else {
+                    currNode.commands.add(command);
+                }
+            }
         }
     }
 

@@ -85,7 +85,10 @@ public class Network {
                     JSONArray commands = (JSONArray) json.get("Commands");
                     Robot.autoProgram.loadedCommands = CommandSequence.loadCommandsFromJSON(commands);
 
-                    //TODO: send auto to all connections
+                    JSONObject autoIsPacket = new JSONObject();
+                    autoIsPacket.put("Type", "AutoIs");
+                    autoIsPacket.put("Commands", commands);
+                    connections.entrySet().forEach(e -> sendTo(autoIsPacket, e.getKey()));
                 } break;
 
                 case "GetParameters": {

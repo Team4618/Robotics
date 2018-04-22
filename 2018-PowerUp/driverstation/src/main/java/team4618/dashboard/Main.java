@@ -22,6 +22,8 @@ import javafx.util.Duration;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
+import team4618.dashboard.autonomous.AutonomousCommandTemplate;
+import team4618.dashboard.autonomous.PathNode;
 import team4618.dashboard.components.MultiLineGraph;
 import team4618.dashboard.pages.*;
 
@@ -154,6 +156,16 @@ public class Main extends Application implements Consumer<ConnectionNotification
                 } break;
 
                 case "AutoIs": {
+                    HomePage.liveFieldView.overlay.removeIf(currDrawable -> !(currDrawable instanceof HomePage.RobotPosition));
+                    AutonomousCommandTemplate.refreshCommandsAndLogic();
+                    if(HomePage.startingPos != null) {
+                        PathNode startingNode = new PathNode(HomePage.startingPos.x, HomePage.startingPos.y);
+                        HomePage.liveFieldView.overlay.add(startingNode);
+
+                        AutonomousPage.jsonToNodes((JSONArray) json.get("Commands"), startingNode, HomePage.liveFieldView, "alwaysTrue");
+                        AutonomousPage.propagateAndDash(startingNode, true);
+                        HomePage.liveFieldView.overlay.forEach(x -> x.interactable = false);
+                    }
 
                 } break;
 

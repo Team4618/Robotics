@@ -8,10 +8,12 @@ import org.json.simple.JSONObject;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 
 public class CommandSequence {
@@ -55,17 +57,18 @@ public class CommandSequence {
                 parameters = params;
 
                 if(command.initializer != null) {
-                    Class<?>[] paramTypes = command.command.getParameterTypes();
+                    Class<?>[] paramTypes = command.initializer.getParameterTypes();
                     boolean overflowArray = paramTypes[paramTypes.length - 1] == double[].class;
 
                     Object[] initializerParams = new Object[paramTypes.length];
                     if (overflowArray) {
-                        initializerParams[paramTypes.length - 1] = Arrays.copyOfRange(parameters, paramTypes.length - 2, parameters.length);
+                        initializerParams[paramTypes.length - 1] = Arrays.copyOfRange(parameters, paramTypes.length - 1, parameters.length);
                     }
                     for (int i = 0; i < paramTypes.length - (overflowArray ? 1 : 0); i++) {
                         initializerParams[i] = parameters[i];
                     }
 
+                    System.out.println(Arrays.toString(initializerParams));
                     data = command.initializer.invoke(command.subsystem, initializerParams);
                 }
             } catch (Exception e) { e.printStackTrace(); }
@@ -81,6 +84,7 @@ public class CommandSequence {
                 }
 
                 if (state == null) {
+                    System.out.println("Init " + command.command.getName());
                     state = new CommandState(currentlyExecutingTable);
                     state.data = data;
                 }
@@ -104,6 +108,10 @@ public class CommandSequence {
             } catch(Exception e) { e.printStackTrace(); }
             return false;
         }
+
+        public void reset() {
+            state = null;
+        }
     }
 
     public static class BranchOption {
@@ -119,19 +127,24 @@ public class CommandSequence {
             boolean branchPicked = false;
             for(BranchOption branch : ifs) {
                 if(getCondition(branch.condition)) {
-                    program.commands.remove(program.currentlyExecuting);
                     program.commands.addAll(program.currentlyExecuting, branch.commands);
+                    program.commands.remove(program.currentlyExecuting + branch.commands.size());
                     branchPicked = true;
                     break;
                 }
             }
 
             if(!branchPicked) {
-                program.commands.remove(program.currentlyExecuting);
                 program.commands.addAll(program.currentlyExecuting, elseCommands);
+                program.commands.remove(program.currentlyExecuting + elseCommands.size());
             }
 
             return false;
+        }
+
+        public void reset() {
+            ifs.forEach(o -> o.commands.forEach(Executable::reset));
+            elseCommands.forEach(Executable::reset);
         }
     }
 
@@ -182,6 +195,7 @@ public class CommandSequence {
 
     interface Executable {
         boolean execute(CommandSequence program);
+        void reset();
     }
 
     ArrayList<Executable> loadedCommands = new ArrayList<>();
@@ -194,34 +208,12 @@ public class CommandSequence {
     public void reset() {
         commands.clear();
         commands.addAll(loadedCommands);
+        commands.forEach(c -> c.reset());
         currentlyExecuting = 0;
     }
 
     public boolean isDone() {
         return currentlyExecuting >= commands.size();
-    }
-
-    public void loadCommandsFromTable(NetworkTable commandTable) {
-        int[] ordered = commandTable.getSubTables().stream().mapToInt(Integer::valueOf).toArray();
-        Arrays.sort(ordered);
-        boolean choseConditional = false;
-        for (int i : ordered) {
-            NetworkTable currCommandTable = commandTable.getSubTable(String.valueOf(i));
-
-            if(currCommandTable.containsKey("Subsystem Name") && currCommandTable.containsKey("Command Name") && currCommandTable.containsKey("Params")) {
-                CommandInstance newCommand = new CommandInstance(currCommandTable.getEntry("Subsystem Name").getString(""),
-                                                                 currCommandTable.getEntry("Command Name").getString(""),
-                                                                 currCommandTable.getEntry("Params").getDoubleArray(new double[0]));
-                commands.add(newCommand);
-            } else if(currCommandTable.containsKey("Conditional") && currCommandTable.containsSubTable("commands") && !choseConditional) {
-                boolean condition = logicTable.getEntry(currCommandTable.getEntry("Conditional").getString("")).getString("").equals("True");
-                System.out.println(currCommandTable.getEntry("Conditional").getString("") + " " + condition);
-                if(condition) {
-                    choseConditional = true;
-                    loadCommandsFromTable(currCommandTable.getSubTable("commands"));
-                }
-            }
-        }
     }
 
     public static ArrayList<Executable> loadCommandsFromJSON(JSONArray jsonCommands) {
@@ -243,15 +235,19 @@ public class CommandSequence {
                 JSONArray ifs = (JSONArray) command.get("Ifs");
                 BranchCommand branchCommand = new BranchCommand();
 
+                System.out.println("Branch");
                 for(Object branchObj : ifs) {
                     JSONObject branch = (JSONObject) branchObj;
                     BranchOption branchOption = new BranchOption();
 
                     branchOption.condition = (String) branch.get("Condition");
                     branchOption.commands = loadCommandsFromJSON((JSONArray) branch.get("Commands"));
+                    System.out.println("if(" + branchOption.condition + ")");
+                    branchCommand.ifs.add(branchOption);
                 }
 
                 branchCommand.elseCommands = command.containsKey("Else") ? loadCommandsFromJSON((JSONArray) command.get("Else")) : new ArrayList<>();
+                result.add(branchCommand);
             }
         }
         return result;

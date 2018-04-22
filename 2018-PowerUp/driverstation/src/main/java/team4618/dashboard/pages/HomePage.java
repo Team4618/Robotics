@@ -30,12 +30,13 @@ import team4618.dashboard.components.FieldTopdown;
 import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     VBox node = new VBox();
     public static FieldTopdown liveFieldView;
     VBox currentlyExecuting = new VBox();
-
     public static FieldTopdown.StartingPosition startingPos;
     public static RobotPosition currentPosition;
 
@@ -65,15 +66,7 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
     public void onClick(double x, double y) { }
 
     public static void resetAutoView() {
-        liveFieldView.overlay.removeIf(currDrawable -> !(currDrawable instanceof RobotPosition));
-        AutonomousCommandTemplate.refreshCommandsAndLogic();
-        if(startingPos != null) {
-            PathNode startingNode = new PathNode(startingPos.x, startingPos.y);
-            liveFieldView.overlay.add(startingNode);
-            AutonomousPage.commandsToPath(AutonomousPage.downloadCommandsFrom("Custom Dashboard/Autonomous"), startingNode, liveFieldView);
-            AutonomousPage.propagateAndDash(startingNode, true);
-            liveFieldView.overlay.forEach(x -> x.interactable = false);
-        }
+
     }
 
     public static void errorMessage(String title, String text) {
@@ -98,12 +91,14 @@ public class HomePage extends DashboardPage implements FieldTopdown.OnClick {
             JSONObject rootObject = (JSONObject) JSONValue.parseWithException(reader);
             reader.close();
 
+            /*
             ArrayList<AutonomousCommand> commandList = new ArrayList<>();
             ((JSONArray) rootObject.get("Commands")).forEach(j -> commandList.add(new AutonomousCommand((JSONObject) j)));
+            */
 
             FieldTopdown.StartingPosition loadedStartingPos = FieldPage.startingPositions.get(rootObject.get("Starting Position"));
             if(startingPos == loadedStartingPos) {
-                AutonomousPage.uploadCommands(commandList);
+                AutonomousPage.uploadAuto((JSONArray) rootObject.get("Commands"));
             } else {
                 errorMessage("Selected Autonomous Not Compatible",
                         "Starting Position: " + startingPos.name + "\nLoaded Auto: " + loadedStartingPos.name);
