@@ -77,6 +77,7 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
         addCommand("driveCurve", "calculateCurve");
     }
 
+    //TODO: remove LeftF & RightF
     @Subsystem.ParameterEnum
     public enum Parameters { LeftP, LeftI, LeftD, LeftF,
                              RightP, RightI, RightD, RightF,
@@ -166,6 +167,7 @@ public class DriveSubsystem extends Subsystem implements PositionProvider {
     double startDriveAngle = 0;
     int stalledCounter = 0;
 
+    //TODO: rewrite this to use pre-generated profiles
     @Command
     public boolean driveDistance(CommandState commandState, double distance, double maxSpeed,
                                                             double timeUntilMaxSpeed, double distanceToSlowdown) {

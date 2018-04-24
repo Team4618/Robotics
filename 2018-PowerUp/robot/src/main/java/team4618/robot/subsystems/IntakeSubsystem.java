@@ -92,6 +92,7 @@ public class IntakeSubsystem extends Subsystem {
     public boolean isWristUp() {
         return Math.abs(getWristPosition() - value(WristUp)) < value(WristSlop);
     }
+    //TODO: check if wrist has stopped moving
     public boolean wristAtSetpoint() { return Math.abs(getWristPosition() - wristSetpoint) < value(WristSlop); }
 
     @Command
@@ -119,6 +120,10 @@ public class IntakeSubsystem extends Subsystem {
     public double automaticIntakeTimer = 0;
     @Command
     public boolean closeIntake(CommandState state) {
+        if(state.init) {
+            automaticIntakeTimer = 0;
+        }
+
         if(hasCube() && (automaticIntakeTimer == 0)) {
             automaticIntakeTimer = state.elapsedTime;
         }

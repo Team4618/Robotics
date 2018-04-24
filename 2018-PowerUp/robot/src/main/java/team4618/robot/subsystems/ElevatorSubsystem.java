@@ -23,8 +23,6 @@ public class ElevatorSubsystem extends Subsystem {
 
     public void init() {
         shepherd.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, 0);
-        shepherd.configPeakOutputForward(1, 0);
-        shepherd.configPeakOutputReverse(-1 /*0.35*/, 0);
 
         shepherd.setSensorPhase(true);
         shepherd.setInverted(true);
@@ -50,8 +48,10 @@ public class ElevatorSubsystem extends Subsystem {
 
     @Subsystem.ParameterEnum
     public enum Parameters {
-        UpP, UpI, UpD, UpF,
-        DownP, DownI, DownD, DownF,
+        UpP, UpI, UpD,
+        DownP, DownI, DownD,
+        MoveP, MoveI, MoveD,
+        HoldP, HoldI, HoldD,
         UpSpeed, DownSpeed, Slop, DistanceToSlowdown,
         SpeedSlop, AuxiliaryDeadzone
     }
@@ -85,7 +85,6 @@ public class ElevatorSubsystem extends Subsystem {
         shepherd.config_kP(0, value(goingUp ? UpP : DownP), 0);
         shepherd.config_kI(0, value(goingUp ? UpI : DownI), 0);
         shepherd.config_kD(0, value(goingUp ? UpD : DownD), 0);
-        shepherd.config_kF(0, value(goingUp ? UpF : DownF), 0);
         shepherd.set(ControlMode.Velocity, setpoint * (1.0 / 10.0));
     }
 
@@ -95,6 +94,25 @@ public class ElevatorSubsystem extends Subsystem {
         double elevatorHeight = getHeight();
         boolean isAtSetpoint = isAt(heightSetpoint);
 
+        boolean holdMode = getSpeed() < 2500;
+        shepherd.config_kP(0, value(holdMode ? HoldP : MoveP), 0);
+        shepherd.config_kI(0, value(holdMode ? HoldI : MoveI), 0);
+        shepherd.config_kD(0, value(holdMode ? HoldD : MoveD), 0);
+
+        if(elevatorHeight < 0) {
+            shepherd.configPeakOutputForward(1, 0);
+            shepherd.configPeakOutputReverse(0.2, 0);
+        } else if(elevatorHeight > 30000) {
+            shepherd.configPeakOutputForward(0.2, 0);
+            shepherd.configPeakOutputReverse(-1, 0);
+        } else {
+            shepherd.configPeakOutputForward(1, 0);
+            shepherd.configPeakOutputReverse(-1, 0);
+        }
+
+        shepherd.set(ControlMode.Position, heightSetpoint);
+
+        /*
         if(isAtSetpoint) {
             shepherd.configContinuousCurrentLimit(10, 0);
             setSpeedSetpoint(0);
@@ -108,8 +126,10 @@ public class ElevatorSubsystem extends Subsystem {
 
             setSpeedSetpoint(speed);
         }
+        */
 
         sheep.set(shepherd.getMotorOutputPercent());
+        auxiliary.set(ControlMode.PercentOutput, holdMode ? 0 : shepherd.getMotorOutputPercent());
     }
 
     public String name() { return "Elevator"; }

@@ -104,9 +104,9 @@ public class Robot extends TimedRobot {
     }
 
     ToggleButton elevatorOverride = new ToggleButton(op, 10, false);
+    ToggleButton breakOverride = new ToggleButton(op, 2, false);
     public static ToggleButton intakeOverride = new ToggleButton(op, 7, false);
     ToggleButton cubeSensorOverride = new ToggleButton(op, 6, false);
-    Button openLatch = new Button(op, 2);
     Button wristUp = new Button(op, 3);
     Button placeCube = new Button(op, 5);
     Button engageAuxiliary = new Button(op, 4);
@@ -257,6 +257,9 @@ public class Robot extends TimedRobot {
             driveForClimb = true;
         }
 
+        //TODO: REMOVE THIS
+        wristSafe = true;
+
         //Set height setpoint to setpoint from the array
         if(!holdFromAuto) {
             elevatorSubsystem.heightSetpoint = wristSafe ? elevatorSetpoints[elevatorSetpoint] : elevatorSubsystem.getHeight();
@@ -306,7 +309,7 @@ public class Robot extends TimedRobot {
         }
 
         elevatorSubsystem.periodicEnabled = !climbToggle.state || (climbToggle.state && elevatorUpForClimb);
-        elevatorSubsystem.elevatorBrake.set((climbToggle.state && elevatorBreakToggle.state) ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
+        elevatorSubsystem.elevatorBrake.set((climbToggle.state && elevatorBreakToggle.state) || (elevatorOverride.state && breakOverride.state) ? DoubleSolenoid.Value.kReverse : DoubleSolenoid.Value.kForward);
 
         intakeSubsystem.periodicEnabled = !climbToggle.state || (climbToggle.state && !wristDisabledForClimb);
 
